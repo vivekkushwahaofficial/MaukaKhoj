@@ -5,6 +5,9 @@ app:
 sources:
   request_timeout_seconds: 20
 
+  lever:
+    account_name: drivetrain
+
 matching:
   role_weight: 25
   skills_weight: 30

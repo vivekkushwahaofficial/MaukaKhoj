@@ -321,3 +321,31 @@ def test_pipeline_rejects_negative_limit() -> None:
         assert "negative" in str(exc).lower()
     else:
         raise AssertionError("Pipeline should reject a negative limit.")
+
+
+def test_pipeline_excludes_jobs_without_core_profile_relevance() -> None:
+    relevant = make_job(
+        "job-relevant",
+        title="Backend Engineer",
+    ).model_dump(mode="json")
+
+    irrelevant = make_job(
+        "job-irrelevant",
+        title="Marketing Manager",
+    ).model_dump(mode="json")
+
+    irrelevant["description"] = "Create marketing campaigns."
+    irrelevant["skills"] = ["Marketing", "SEO"]
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [relevant, irrelevant],
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(make_profile())
+
+    assert [item.job.job_id for item in result.processed_jobs] == [
+        "job-relevant",
+    ]

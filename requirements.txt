@@ -2,3 +2,5 @@ httpx
 pydantic
 pyyaml
 pytest
+python-dotenv==1.2.3
+google-genai==2.23.0

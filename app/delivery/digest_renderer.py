@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 from html import escape
+from typing import Any
 
+from app.ai.models import AIEnhancementResponse
 from app.pipeline.models import PipelineResult, ProcessedJob
 
 
 class DigestRenderer:
     """Render a PipelineResult into email-friendly HTML and plain text."""
 
-    def render_html(self, result: PipelineResult) -> str:
+    def render_html(
+        self,
+        result: PipelineResult,
+        *,
+        ai_response: AIEnhancementResponse | None = None,
+    ) -> str:
         """Render the pipeline result as an HTML email body."""
+
         sections: list[str] = [
             "<!DOCTYPE html>",
             "<html>",
@@ -29,7 +37,12 @@ class DigestRenderer:
             )
 
             for processed_job in result.processed_jobs:
-                sections.append(self._render_job_html(processed_job))
+                sections.append(
+                    self._render_job_html(
+                        processed_job,
+                        ai_response=ai_response,
+                    )
+                )
 
         if result.source_failures:
             sections.append("<h2>Source Failures</h2>")
@@ -56,8 +69,14 @@ class DigestRenderer:
 
         return "\n".join(sections)
 
-    def render_text(self, result: PipelineResult) -> str:
+    def render_text(
+        self,
+        result: PipelineResult,
+        *,
+        ai_response: AIEnhancementResponse | None = None,
+    ) -> str:
         """Render the pipeline result as plain text."""
+
         lines = [
             "MaukaKhoj Job Digest",
             "=" * 22,
@@ -71,7 +90,12 @@ class DigestRenderer:
             lines.append("")
 
             for processed_job in result.processed_jobs:
-                lines.extend(self._render_job_text(processed_job))
+                lines.extend(
+                    self._render_job_text(
+                        processed_job,
+                        ai_response=ai_response,
+                    )
+                )
                 lines.append("")
 
         if result.source_failures:
@@ -91,10 +115,22 @@ class DigestRenderer:
 
         return "\n".join(lines)
 
-    def _render_job_html(self, processed_job: ProcessedJob) -> str:
+    def _render_job_html(
+        self,
+        processed_job: ProcessedJob,
+        *,
+        ai_response: AIEnhancementResponse | None = None,
+    ) -> str:
+        """Render one processed job as HTML."""
+
         job = processed_job.job
         score = processed_job.job_score
         explanation = processed_job.explanation
+
+        ai_insight = self._find_ai_insight(
+            job.job_id,
+            ai_response,
+        )
 
         location = escape(job.location or "Not specified")
         remote_type = escape(job.remote_type.value)
@@ -116,6 +152,28 @@ class DigestRenderer:
                 f"{escape(str(job.application_url), quote=True)}"
                 '">Apply for this position</a></p>'
             )
+
+        if ai_insight is not None:
+            sections.append("<h3>AI Summary</h3>")
+            sections.append(f"<p>{escape(ai_insight.summary)}</p>")
+
+            if ai_insight.strengths:
+                sections.append("<h4>Strengths</h4>")
+                sections.append("<ul>")
+
+                for strength in ai_insight.strengths:
+                    sections.append(f"<li>{escape(strength)}</li>")
+
+                sections.append("</ul>")
+
+            if ai_insight.cautions:
+                sections.append("<h4>Cautions</h4>")
+                sections.append("<ul>")
+
+                for caution in ai_insight.cautions:
+                    sections.append(f"<li>{escape(caution)}</li>")
+
+                sections.append("</ul>")
 
         sections.append("<h3>Why it matches</h3>")
         sections.append("<ul>")
@@ -141,10 +199,22 @@ class DigestRenderer:
 
         return "\n".join(sections)
 
-    def _render_job_text(self, processed_job: ProcessedJob) -> list[str]:
+    def _render_job_text(
+        self,
+        processed_job: ProcessedJob,
+        *,
+        ai_response: AIEnhancementResponse | None = None,
+    ) -> list[str]:
+        """Render one processed job as plain text."""
+
         job = processed_job.job
         score = processed_job.job_score
         explanation = processed_job.explanation
+
+        ai_insight = self._find_ai_insight(
+            job.job_id,
+            ai_response,
+        )
 
         lines = [
             f"#{processed_job.rank} — {job.title}",
@@ -155,8 +225,29 @@ class DigestRenderer:
             f"Posted: {self._format_datetime(job.posted_at)}",
             f"Apply: {job.application_url}",
             "",
-            "Why it matches:",
         ]
+
+        if ai_insight is not None:
+            lines.append("AI Summary:")
+            lines.append(f"- {ai_insight.summary}")
+
+            if ai_insight.strengths:
+                lines.append("")
+                lines.append("Strengths:")
+
+                for strength in ai_insight.strengths:
+                    lines.append(f"- {strength}")
+
+            if ai_insight.cautions:
+                lines.append("")
+                lines.append("Cautions:")
+
+                for caution in ai_insight.cautions:
+                    lines.append(f"- {caution}")
+
+            lines.append("")
+
+        lines.append("Why it matches:")
 
         for dimension in explanation.dimensions:
             lines.append(f"- {dimension.dimension}: {dimension.status}")
@@ -167,8 +258,24 @@ class DigestRenderer:
         return lines
 
     @staticmethod
+    def _find_ai_insight(
+        job_id: str,
+        ai_response: AIEnhancementResponse | None,
+    ) -> Any | None:
+        """Find the AI insight belonging to a specific job."""
+
+        if ai_response is None:
+            return None
+
+        return next(
+            (insight for insight in ai_response.insights if insight.job_id == job_id),
+            None,
+        )
+
+    @staticmethod
     def _format_datetime(value) -> str:
         """Format an optional datetime for email output."""
+
         if value is None:
             return "Not specified"
 

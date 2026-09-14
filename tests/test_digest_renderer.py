@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from app.ai.models import AIEnhancementResponse
 from app.delivery.digest_renderer import DigestRenderer
 from app.domain.job import (
     EmploymentType,
@@ -138,6 +139,25 @@ def make_processed_job() -> ProcessedJob:
     )
 
 
+def make_ai_response() -> AIEnhancementResponse:
+    return AIEnhancementResponse(
+        insights=(
+            {
+                "job_id": "lever:drivetrain:123",
+                "summary": (
+                    "This role strongly aligns with the candidate's "
+                    "backend development focus."
+                ),
+                "strengths": (
+                    "Java matches the candidate's skills.",
+                    "Spring Boot matches the candidate's skills.",
+                ),
+                "cautions": ("Structured education requirements are unavailable.",),
+            },
+        )
+    )
+
+
 def test_render_html_contains_job_information() -> None:
     result = PipelineResult(
         processed_jobs=(make_processed_job(),),
@@ -170,6 +190,78 @@ def test_render_text_contains_job_information() -> None:
     assert "Match Score: 87.50/100" in text
     assert "https://example.com/apply" in text
     assert "Why it matches:" in text
+
+
+def test_render_html_contains_ai_insight() -> None:
+    result = PipelineResult(
+        processed_jobs=(make_processed_job(),),
+    )
+
+    html = DigestRenderer().render_html(
+        result,
+        ai_response=make_ai_response(),
+    )
+
+    assert "AI Summary" in html
+    assert "This role strongly aligns with the candidate" in html
+    assert "backend development focus." in html
+    assert "Java and Spring Boot match." in html
+    assert "Java and Spring Boot match." in html
+    assert "Cautions" in html
+    assert "Structured education requirements are unavailable." in html
+
+    # Deterministic explanation remains present.
+    assert "Why it matches" in html
+    assert "MATCHED" in html
+
+
+def test_render_text_contains_ai_insight() -> None:
+    result = PipelineResult(
+        processed_jobs=(make_processed_job(),),
+    )
+
+    text = DigestRenderer().render_text(
+        result,
+        ai_response=make_ai_response(),
+    )
+
+    assert "AI Summary:" in text
+    assert "This role strongly aligns with the candidate's" in text
+    assert "backend development focus." in text
+    assert "Strengths:" in text
+    assert "Java matches the candidate's skills." in text
+    assert "Spring Boot matches the candidate's skills." in text
+    assert "Cautions:" in text
+    assert "Structured education requirements are unavailable." in text
+
+    # Deterministic explanation remains present.
+    assert "Why it matches:" in text
+
+
+def test_render_ai_response_for_unknown_job_is_ignored() -> None:
+    result = PipelineResult(
+        processed_jobs=(make_processed_job(),),
+    )
+
+    ai_response = AIEnhancementResponse(
+        insights=(
+            {
+                "job_id": "different-job",
+                "summary": "This should not appear.",
+                "strengths": ("Unknown strength.",),
+                "cautions": (),
+            },
+        )
+    )
+
+    html = DigestRenderer().render_html(
+        result,
+        ai_response=ai_response,
+    )
+
+    assert "This should not appear." not in html
+    assert "AI Summary" not in html
+    assert "Why it matches" in html
 
 
 def test_render_empty_result() -> None:

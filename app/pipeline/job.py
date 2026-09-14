@@ -16,6 +16,18 @@ from app.validation.base import JobValidator
 class JobPipeline:
     """Orchestrate the complete MaukaKhoj job-processing pipeline."""
 
+    @staticmethod
+    def _is_profile_relevant(match_result) -> bool:
+        """Return whether a job has at least one core profile match."""
+
+        return any(
+            (
+                match_result.role.matched is True,
+                match_result.skills.matched is True,
+                match_result.domain.matched is True,
+            )
+        )
+
     def __init__(
         self,
         *,
@@ -95,6 +107,9 @@ class JobPipeline:
                 job,
                 profile,
             )
+
+            if not self._is_profile_relevant(match_result):
+                continue
 
             job_score = self._scorer.score(
                 job,

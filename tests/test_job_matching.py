@@ -254,3 +254,17 @@ def test_internship_matches_low_experience_profile(matcher):
     )
 
     assert result.experience.matched is True
+
+
+def test_unknown_employment_type_remains_unknown(matcher):
+    result = matcher.match(
+        create_job(
+            employment_type=EmploymentType.UNKNOWN,
+        ),
+        create_profile(
+            employment_preferences=["FULL_TIME"],
+        ),
+    )
+
+    assert result.employment.matched is None
+    assert result.employment.evidence == ("Job employment type is unknown.",)

@@ -1,4 +1,4 @@
-from app.domain.job import ExperienceLevel, Job, RemoteType
+from app.domain.job import EmploymentType, ExperienceLevel, Job, RemoteType
 from app.domain.profile import Profile
 from app.matching.base import JobProfileMatcher
 from app.matching.models import MatchDimension, MatchResult
@@ -98,7 +98,6 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 evidence=("Job experience level is unknown.",),
             )
 
-        # No specific experience target is configured.
         if profile.experience.current_title is None and profile.experience.years == 0:
             return MatchDimension(
                 matched=None,
@@ -228,6 +227,11 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         return MatchDimension(
             matched=bool(matched),
             matched_values=matched,
+            missing_values=tuple(
+                preference
+                for preference in profile.remote_preferences
+                if preference not in matched
+            ),
             evidence=(f"Job remote type is {remote_type}.",),
         )
 
@@ -242,6 +246,12 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 evidence=("No employment preferences are configured.",),
             )
 
+        if job.employment_type == EmploymentType.UNKNOWN:
+            return MatchDimension(
+                matched=None,
+                evidence=("Job employment type is unknown.",),
+            )
+
         employment_type = job.employment_type.value
 
         matched = tuple(
@@ -253,6 +263,11 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         return MatchDimension(
             matched=bool(matched),
             matched_values=matched,
+            missing_values=tuple(
+                preference
+                for preference in profile.employment_preferences
+                if preference not in matched
+            ),
             evidence=(f"Job employment type is {employment_type}.",),
         )
 

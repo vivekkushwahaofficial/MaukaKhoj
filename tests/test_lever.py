@@ -1,3 +1,5 @@
+import pytest
+
 from app.sources.lever import LeverAdapter
 
 
@@ -44,3 +46,20 @@ def test_lever_adapter_uses_account_name_and_returns_raw_jobs():
             },
         }
     ]
+
+def test_lever_adapter_rejects_non_array_response():
+    class InvalidResponseHttpClient:
+        def get_json(self, url: str) -> object:
+            return {"jobs": []}
+
+    adapter = LeverAdapter(
+        account_name="example",
+        http_client=InvalidResponseHttpClient(),
+    )
+
+    try:
+        adapter.fetch_jobs()
+    except ValueError as exc:
+        assert str(exc) == "Lever response must be a JSON array."
+    else:
+        raise AssertionError("Expected ValueError")

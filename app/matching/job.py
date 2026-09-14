@@ -1,4 +1,4 @@
-from app.domain.job import Job, RemoteType
+from app.domain.job import ExperienceLevel, Job, RemoteType
 from app.domain.profile import Profile
 from app.matching.base import JobProfileMatcher
 from app.matching.models import MatchDimension, MatchResult
@@ -92,21 +92,54 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         job: Job,
         profile: Profile,
     ) -> MatchDimension:
-        if job.experience_level.value == "UNKNOWN":
+        if job.experience_level == ExperienceLevel.UNKNOWN:
             return MatchDimension(
                 matched=None,
                 evidence=("Job experience level is unknown.",),
             )
 
+        # No specific experience target is configured.
         if profile.experience.current_title is None and profile.experience.years == 0:
             return MatchDimension(
                 matched=None,
                 evidence=("No specific profile experience target is configured.",),
             )
 
+        years = profile.experience.years
+
+        if job.experience_level == ExperienceLevel.INTERN:
+            compatible = years <= 1.0
+
+        elif job.experience_level == ExperienceLevel.ENTRY_LEVEL:
+            compatible = years <= 2.0
+
+        elif job.experience_level == ExperienceLevel.JUNIOR:
+            compatible = years <= 3.0
+
+        elif job.experience_level == ExperienceLevel.MID_LEVEL:
+            compatible = 2.0 <= years <= 5.0
+
+        elif job.experience_level == ExperienceLevel.SENIOR:
+            compatible = years >= 5.0
+
+        elif job.experience_level == ExperienceLevel.LEAD:
+            compatible = years >= 7.0
+
+        else:
+            return MatchDimension(
+                matched=None,
+                evidence=(
+                    "Job experience level is not supported "
+                    "for deterministic matching.",
+                ),
+            )
+
         return MatchDimension(
-            matched=True,
-            evidence=(f"Job experience level is {job.experience_level.value}.",),
+            matched=compatible,
+            evidence=(
+                f"Job experience level is {job.experience_level.value}; "
+                f"profile experience is {years:.1f} years.",
+            ),
         )
 
     def _match_education(

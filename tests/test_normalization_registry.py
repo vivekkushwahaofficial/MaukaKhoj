@@ -4,6 +4,7 @@ import pytest
 
 from app.domain.job import Job
 from app.normalization.base import JobNormalizer
+from app.normalization.ashby import AshbyJobNormalizer
 from app.normalization.registry import NormalizationRegistry
 
 
@@ -61,3 +62,21 @@ def test_unknown_source_is_rejected() -> None:
         match="No job normalizer registered",
     ):
         registry.get("lever")
+
+
+def test_register_and_get_ashby_normalizer() -> None:
+    registry = NormalizationRegistry()
+    normalizer = AshbyJobNormalizer("Example")
+
+    registry.register("ashby", normalizer)
+
+    assert registry.get("ashby") is normalizer
+
+
+def test_ashby_source_lookup_is_case_insensitive() -> None:
+    registry = NormalizationRegistry()
+    normalizer = AshbyJobNormalizer("Example")
+
+    registry.register("Ashby", normalizer)
+
+    assert registry.get("ASHBY") is normalizer

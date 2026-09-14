@@ -7,6 +7,8 @@ from app.domain.job import (
     Job,
     RemoteType,
 )
+
+from app.normalization.ashby import AshbyJobNormalizer
 from app.normalization.base import JobNormalizer
 from app.normalization.pipeline import NormalizationPipeline
 from app.normalization.registry import NormalizationRegistry
@@ -75,3 +77,40 @@ def test_pipeline_rejects_unknown_source() -> None:
             "unknown",
             [{"id": "1", "title": "Developer"}],
         )
+
+
+def test_pipeline_normalizes_ashby_jobs() -> None:
+    registry = NormalizationRegistry()
+    registry.register(
+        "ashby",
+        AshbyJobNormalizer("Example"),
+    )
+
+    pipeline = NormalizationPipeline(registry)
+
+    raw_jobs = [
+        {
+            "title": "Backend Engineer",
+            "location": "Bangalore, India",
+            "isRemote": True,
+            "workplaceType": "Remote",
+            "descriptionPlain": "Build backend systems.",
+            "publishedAt": "2026-09-10T10:30:00.000+00:00",
+            "employmentType": "FullTime",
+            "jobUrl": ("https://jobs.ashbyhq.com/" "example/backend-engineer"),
+            "applyUrl": ("https://jobs.ashbyhq.com/" "example/backend-engineer/apply"),
+            "address": {
+                "postalAddress": {
+                    "addressCountry": "India",
+                }
+            },
+        }
+    ]
+
+    jobs = pipeline.normalize("ashby", raw_jobs)
+
+    assert len(jobs) == 1
+    assert jobs[0].source == "ashby"
+    assert jobs[0].company == "Example"
+    assert jobs[0].title == "Backend Engineer"
+    assert jobs[0].remote_type == RemoteType.INDIA_REMOTE

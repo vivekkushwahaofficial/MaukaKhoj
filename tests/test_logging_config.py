@@ -11,9 +11,17 @@ def test_configure_logging_sets_level():
     assert root_logger.level == logging.DEBUG
 
 
-def test_configure_logging_sets_handler():
-    configure_logging()
-
+def test_configure_logging_adds_handler_when_none_exists():
     root_logger = logging.getLogger()
+    original_handlers = root_logger.handlers.copy()
 
-    assert root_logger.handlers
+    try:
+        root_logger.handlers.clear()
+
+        configure_logging()
+
+        assert root_logger.handlers
+        assert isinstance(root_logger.handlers[0], logging.StreamHandler)
+    finally:
+        root_logger.handlers.clear()
+        root_logger.handlers.extend(original_handlers)

@@ -212,3 +212,59 @@ def test_no_preferences_produce_unknown_dimensions(matcher):
     assert result.remote.matched is None
     assert result.employment.matched is None
     assert result.domain.matched is None
+
+
+def test_entry_level_job_matches_entry_level_profile(matcher):
+    result = matcher.match(
+        create_job(experience_level=ExperienceLevel.ENTRY_LEVEL),
+        create_profile(
+            experience=Experience(
+                years=1.0,
+                current_title="Java Developer",
+            )
+        ),
+    )
+
+    assert result.experience.matched is True
+
+
+def test_senior_job_does_not_match_entry_level_profile(matcher):
+    result = matcher.match(
+        create_job(experience_level=ExperienceLevel.SENIOR),
+        create_profile(
+            experience=Experience(
+                years=1.0,
+                current_title="Java Developer",
+            )
+        ),
+    )
+
+    assert result.experience.matched is False
+
+
+def test_internship_matches_low_experience_profile(matcher):
+    result = matcher.match(
+        create_job(experience_level=ExperienceLevel.INTERN),
+        create_profile(
+            experience=Experience(
+                years=0.0,
+                current_title="Student",
+            )
+        ),
+    )
+
+    assert result.experience.matched is True
+
+
+def test_unknown_employment_type_remains_unknown(matcher):
+    result = matcher.match(
+        create_job(
+            employment_type=EmploymentType.UNKNOWN,
+        ),
+        create_profile(
+            employment_preferences=["FULL_TIME"],
+        ),
+    )
+
+    assert result.employment.matched is None
+    assert result.employment.evidence == ("Job employment type is unknown.",)

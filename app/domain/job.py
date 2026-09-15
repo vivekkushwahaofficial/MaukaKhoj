@@ -3,6 +3,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.domain.education import EducationRequirement
+
 
 class RemoteType(str, Enum):
     INDIA_REMOTE = "INDIA_REMOTE"
@@ -56,3 +58,10 @@ class Job(BaseModel):
     application_url: HttpUrl
     company_url: HttpUrl | None = None
     source_url: HttpUrl | None = None
+
+    # Structured education requirements extracted during normalization.
+    # UNKNOWN means the source did not provide enough information to
+    # determine an education requirement.
+    education_requirement: EducationRequirement = Field(
+        default_factory=EducationRequirement
+    )

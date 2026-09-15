@@ -2,6 +2,7 @@ import re
 from typing import Any
 
 from app.deduplication.base import JobDeduplicator
+from app.domain.education import EducationRequirementStatus
 from app.domain.job import Job
 from app.domain.profile import Profile
 from app.explanation.base import JobExplainer
@@ -23,6 +24,8 @@ from app.validation.base import JobValidator
 class JobPipeline:
     """Orchestrate the complete MaukaKhoj job-processing pipeline."""
 
+    # Explicit senior and management title patterns that should not pass
+    # the profile relevance gate for entry-level-oriented profiles.
     _SENIORITY_EXCLUDE_PATTERN = re.compile(
         r"\b("
         r"senior|"
@@ -48,8 +51,12 @@ class JobPipeline:
     )
 
     @classmethod
-    def _is_senior_or_management_title(cls, title: str) -> bool:
+    def _is_senior_or_management_title(
+        cls,
+        title: str,
+    ) -> bool:
         """Return whether a job title is outside the target seniority."""
+
         return bool(cls._SENIORITY_EXCLUDE_PATTERN.search(title))
 
     @classmethod
@@ -59,17 +66,31 @@ class JobPipeline:
         match_result,
         profile: Profile,
     ) -> bool:
-        """Return whether a job is relevant to the configured profile.
+        """
+        Return whether a job is relevant to the configured profile.
 
         A job must:
         1. not have an explicitly senior or management title,
         2. satisfy configured location/remote preferences when present,
-        3. have at least one core profile match.
+        3. have at least one core profile match,
+        4. satisfy an explicit education requirement when one exists.
+
+        Education with UNKNOWN or NOT_REQUIRED status remains neutral.
         """
 
+        # --------------------------------------------------------------
+        # Seniority gate
+        # --------------------------------------------------------------
         if cls._is_senior_or_management_title(job.title):
             return False
 
+        # --------------------------------------------------------------
+        # Core profile relevance
+        # --------------------------------------------------------------
+        #
+        # At least one of role, skills, or domain must provide a
+        # deterministic positive match.
+        #
         has_core_match = any(
             (
                 match_result.role.matched is True,
@@ -81,11 +102,37 @@ class JobPipeline:
         if not has_core_match:
             return False
 
+        # --------------------------------------------------------------
+        # Location / remote gate
+        # --------------------------------------------------------------
+        #
+        # When the profile has location preferences, the job must match
+        # either a configured location or a configured remote preference.
+        #
         if profile.locations:
             location_matches = match_result.location.matched is True
             remote_matches = match_result.remote.matched is True
 
             if not location_matches and not remote_matches:
+                return False
+
+        # --------------------------------------------------------------
+        # Education gate
+        # --------------------------------------------------------------
+        #
+        # UNKNOWN:
+        #   The job does not contain enough structured information.
+        #
+        # NOT_REQUIRED:
+        #   The job explicitly says education is not required.
+        #
+        # REQUIRED:
+        #   The profile must satisfy the structured requirement.
+        #
+        education_status = job.education_requirement.status
+
+        if education_status == EducationRequirementStatus.REQUIRED:
+            if match_result.education.matched is not True:
                 return False
 
         return True
@@ -103,6 +150,8 @@ class JobPipeline:
         ranker: JobRanker,
         explainer: JobExplainer,
     ) -> None:
+        """Initialize the pipeline with its processing components."""
+
         self._source_adapters = source_adapters
         self._normalization_pipeline = normalization_pipeline
         self._validator = validator
@@ -121,13 +170,23 @@ class JobPipeline:
     ) -> PipelineResult:
         """Run all configured job sources through the complete pipeline."""
 
+        # --------------------------------------------------------------
+        # Source fetching
+        # --------------------------------------------------------------
         raw_jobs: list[tuple[str, list[dict[str, Any]]]] = []
+
         source_failures: list[SourceFailure] = []
 
         for adapter in self._source_adapters:
             try:
                 fetched_jobs = adapter.fetch_jobs()
-                raw_jobs.append((adapter.source_id, fetched_jobs))
+
+                raw_jobs.append(
+                    (
+                        adapter.source_id,
+                        fetched_jobs,
+                    )
+                )
             except Exception as exc:
                 source_failures.append(
                     SourceFailure(
@@ -136,6 +195,9 @@ class JobPipeline:
                     )
                 )
 
+        # --------------------------------------------------------------
+        # Normalization
+        # --------------------------------------------------------------
         normalized_jobs: list[Job] = []
 
         for source_id, source_jobs in raw_jobs:
@@ -146,20 +208,33 @@ class JobPipeline:
                 )
             )
 
+        # --------------------------------------------------------------
+        # Validation
+        # --------------------------------------------------------------
         validation_results = []
         valid_jobs = []
 
         for job in normalized_jobs:
             validation_result = self._validator.validate(job)
+
             validation_results.append(validation_result)
 
             if validation_result.is_valid:
                 valid_jobs.append(job)
 
+        # --------------------------------------------------------------
+        # Deduplication
+        # --------------------------------------------------------------
         deduplication_result = self._deduplicator.deduplicate(valid_jobs)
 
+        # --------------------------------------------------------------
+        # Hard filtering
+        # --------------------------------------------------------------
         filter_result = self._hard_filter.filter(list(deduplication_result.unique_jobs))
 
+        # --------------------------------------------------------------
+        # Profile matching and scoring
+        # --------------------------------------------------------------
         scored_jobs = []
         match_results = {}
         profile_matched_jobs = []
@@ -170,6 +245,8 @@ class JobPipeline:
                 profile,
             )
 
+            # Apply seniority, core relevance, location/remote,
+            # and education eligibility before scoring.
             if not self._is_profile_relevant(
                 job,
                 match_result,
@@ -190,14 +267,26 @@ class JobPipeline:
                 match_result,
             )
 
-            scored_jobs.append((job, job_score))
+            scored_jobs.append(
+                (
+                    job,
+                    job_score,
+                )
+            )
+
             match_results[job.job_id] = match_result
 
+        # --------------------------------------------------------------
+        # Ranking
+        # --------------------------------------------------------------
         ranking_result = self._ranker.rank(
             scored_jobs,
             limit=limit,
         )
 
+        # --------------------------------------------------------------
+        # Explanation + final processed jobs
+        # --------------------------------------------------------------
         processed_jobs = []
 
         for ranked_job in ranking_result.selected_jobs:
@@ -220,6 +309,9 @@ class JobPipeline:
                 )
             )
 
+        # --------------------------------------------------------------
+        # Final pipeline result
+        # --------------------------------------------------------------
         return PipelineResult(
             processed_jobs=tuple(processed_jobs),
             profile_matched_jobs=tuple(profile_matched_jobs),

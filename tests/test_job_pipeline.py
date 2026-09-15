@@ -2,8 +2,12 @@ import pytest
 from datetime import datetime, timezone
 
 from app.deduplication.job import CanonicalJobDeduplicator
+from app.domain.education import (
+    EducationRequirement,
+    EducationRequirementStatus,
+)
 from app.domain.job import EmploymentType, ExperienceLevel, Job, RemoteType
-from app.domain.profile import Profile
+from app.domain.profile import Education, Profile
 from app.explanation.job import DeterministicJobExplainer
 from app.filtering.job import CanonicalJobHardFilter
 from app.matching.job import CanonicalJobProfileMatcher
@@ -446,3 +450,258 @@ def test_pipeline_keeps_regular_software_engineer() -> None:
 
     assert len(result.profile_matched_jobs) == 1
     assert result.profile_matched_jobs[0].job.job_id == "regular-job"
+
+
+# ---------------------------------------------------------------------------
+# Education filtering
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_excludes_explicit_education_requirement_without_profile() -> None:
+    job = make_job("education-required")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(make_profile())
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()
+
+
+def test_pipeline_keeps_job_without_education_requirement() -> None:
+    """
+    A job with no explicit education requirement remains eligible
+    when the profile has no education information.
+    """
+
+    job = make_job(
+        "education-unknown",
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    # Keep the normal profile relevance settings while leaving education
+    # unconfigured. This isolates the education behavior under test.
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].match_result.education.matched is None
+
+
+def test_pipeline_accepts_matching_btech_profile() -> None:
+    job = make_job("education-btech")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].match_result.education.matched is True
+
+
+def test_pipeline_excludes_wrong_degree() -> None:
+    job = make_job("education-wrong-degree")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="Master's degree",
+        field="Computer Science",
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()
+
+
+def test_pipeline_accepts_current_student_when_job_allows_students() -> None:
+    job = make_job("education-current-student")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+        accepts_current_students=True,
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].match_result.education.matched is True
+
+
+def test_pipeline_excludes_current_student_when_job_does_not_allow_students() -> None:
+    job = make_job("education-student-not-allowed")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+        accepts_current_students=False,
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()
+
+
+def test_pipeline_excludes_late_graduation_year() -> None:
+    job = make_job("education-graduation-year")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+        minimum_graduation_year=2024,
+        maximum_graduation_year=2026,
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()
+
+
+def test_pipeline_accepts_matching_graduation_range() -> None:
+    job = make_job("education-graduation-range")
+    job.education_requirement = EducationRequirement(
+        status=EducationRequirementStatus.REQUIRED,
+        degree="B.Tech",
+        field="Computer Science",
+        minimum_graduation_year=2026,
+        maximum_graduation_year=2028,
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [job.model_dump(mode="json")],
+    )
+
+    profile = make_profile().model_copy(
+        update={
+            "education": Education(
+                degree="B.Tech",
+                field="Computer Science",
+                graduation_year=2027,
+                is_running=True,
+            ),
+        }
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(profile)
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].match_result.education.matched is True

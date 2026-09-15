@@ -6,7 +6,12 @@ from app.explanation.base import JobExplainer
 from app.filtering.base import JobHardFilter
 from app.matching.base import JobProfileMatcher
 from app.normalization.pipeline import NormalizationPipeline
-from app.pipeline.models import PipelineResult, ProcessedJob, SourceFailure
+from app.pipeline.models import (
+    PipelineResult,
+    ProcessedJob,
+    ProfileMatchedJob,
+    SourceFailure,
+)
 from app.ranking.base import JobRanker
 from app.scoring.base import JobScorer
 from app.sources.base import JobSourceAdapter
@@ -101,6 +106,7 @@ class JobPipeline:
 
         scored_jobs = []
         match_results = {}
+        profile_matched_jobs = []
 
         for job in filter_result.eligible_jobs:
             match_result = self._matcher.match(
@@ -110,6 +116,13 @@ class JobPipeline:
 
             if not self._is_profile_relevant(match_result):
                 continue
+
+            profile_matched_jobs.append(
+                ProfileMatchedJob(
+                    job=job,
+                    match_result=match_result,
+                )
+            )
 
             job_score = self._scorer.score(
                 job,
@@ -149,6 +162,7 @@ class JobPipeline:
 
         return PipelineResult(
             processed_jobs=tuple(processed_jobs),
+            profile_matched_jobs=tuple(profile_matched_jobs),
             validation_results=tuple(validation_results),
             duplicates=deduplication_result.duplicates,
             rejected_jobs=filter_result.rejected_jobs,

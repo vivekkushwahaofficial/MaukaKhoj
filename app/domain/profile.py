@@ -10,6 +10,12 @@ class Education(BaseModel):
     degree: str | None = None
     field: str | None = None
     institution: str | None = None
+    graduation_year: int | None = Field(
+        default=None,
+        ge=1900,
+        le=2100,
+    )
+    is_running: bool = False
 
 
 class Profile(BaseModel):

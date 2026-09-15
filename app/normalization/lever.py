@@ -8,12 +8,15 @@ from app.domain.job import (
     RemoteType,
 )
 from app.normalization.base import JobNormalizer
+from app.normalization.education import EducationRequirementExtractor
 
 
 class LeverJobNormalizer(JobNormalizer):
     """Normalize a raw Lever posting into a canonical Job."""
 
     def __init__(self, account_name: str) -> None:
+        # Lever account name is required because it becomes part of the
+        # canonical job identifier and company name.
         if not account_name.strip():
             raise ValueError("Lever account name cannot be empty.")
 
@@ -22,18 +25,27 @@ class LeverJobNormalizer(JobNormalizer):
     def normalize(self, raw_job: dict[str, Any]) -> Job:
         """Convert one raw Lever posting into a canonical Job."""
 
+        # Required Lever fields.
         source_job_id = self._required_string(raw_job, "id")
         title = self._required_string(raw_job, "text")
         description = self._get_description(raw_job)
         apply_url = self._required_string(raw_job, "applyUrl")
 
+        # Lever categories contain location and employment information.
         categories = raw_job.get("categories", {})
+
         if not isinstance(categories, dict):
             raise ValueError("Lever categories must be an object.")
 
         location = self._optional_string(categories.get("location"))
+
         commitment = self._optional_string(categories.get("commitment"))
+
         workplace_type = self._optional_string(raw_job.get("workplaceType"))
+
+        # Extract structured education requirements from the final
+        # normalized plain-text description.
+        education_requirement = EducationRequirementExtractor.extract(description)
 
         return Job(
             job_id=f"lever:{self._account_name}:{source_job_id}",
@@ -56,6 +68,7 @@ class LeverJobNormalizer(JobNormalizer):
             application_url=apply_url,
             company_url=None,
             source_url=self._optional_string(raw_job.get("hostedUrl")),
+            education_requirement=education_requirement,
         )
 
     @staticmethod
@@ -63,6 +76,8 @@ class LeverJobNormalizer(JobNormalizer):
         raw_job: dict[str, Any],
         field: str,
     ) -> str:
+        """Return a required non-empty string field."""
+
         value = raw_job.get(field)
 
         if not isinstance(value, str) or not value.strip():
@@ -72,6 +87,8 @@ class LeverJobNormalizer(JobNormalizer):
 
     @staticmethod
     def _optional_string(value: Any) -> str | None:
+        """Return a normalized string or None."""
+
         if isinstance(value, str) and value.strip():
             return value.strip()
 
@@ -82,10 +99,14 @@ class LeverJobNormalizer(JobNormalizer):
         workplace_type: str | None,
         location: str | None,
     ) -> RemoteType:
+        """Map Lever workplace metadata to the canonical remote enum."""
+
         if workplace_type == "remote":
+            # Lever explicitly reports India remote.
             if location and location.strip().lower() == "india":
                 return RemoteType.INDIA_REMOTE
 
+            # Remote, but country/region could not be safely determined.
             return RemoteType.UNKNOWN
 
         if workplace_type == "hybrid":
@@ -100,6 +121,8 @@ class LeverJobNormalizer(JobNormalizer):
     def _map_employment_type(
         commitment: str | None,
     ) -> EmploymentType:
+        """Map Lever commitment metadata to the canonical employment enum."""
+
         if not commitment:
             return EmploymentType.UNKNOWN
 
@@ -123,7 +146,11 @@ class LeverJobNormalizer(JobNormalizer):
         return EmploymentType.UNKNOWN
 
     @staticmethod
-    def _parse_timestamp(value: Any) -> datetime | None:
+    def _parse_timestamp(
+        value: Any,
+    ) -> datetime | None:
+        """Convert a Lever millisecond timestamp to UTC datetime."""
+
         if not isinstance(value, (int, float)):
             return None
 
@@ -136,6 +163,13 @@ class LeverJobNormalizer(JobNormalizer):
     def _get_description(
         raw_job: dict[str, Any],
     ) -> str:
+        """
+        Return the best available Lever job description.
+
+        Prefer descriptionPlain because it is already suitable for
+        deterministic text extraction. Fall back to HTML description.
+        """
+
         plain_description = raw_job.get("descriptionPlain")
 
         if isinstance(plain_description, str) and plain_description.strip():
@@ -147,5 +181,5 @@ class LeverJobNormalizer(JobNormalizer):
             return description.strip()
 
         raise ValueError(
-            "Lever job must contain a non-empty descriptionPlain or description."
+            "Lever job must contain a non-empty " "descriptionPlain or description."
         )

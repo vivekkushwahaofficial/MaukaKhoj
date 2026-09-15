@@ -65,7 +65,11 @@ def test_application_creates_lever_pipeline() -> None:
         return_value=jobs,
     ):
         application = MaukaKhojApplication(
-            lever_account_name="drivetrain",
+            sources_config={
+                "lever": {
+                    "account_name": "drivetrain",
+                },
+            },
         )
 
         try:
@@ -97,7 +101,11 @@ def test_application_accepts_freshness_configuration() -> None:
         return_value=[fresh_job, stale_job],
     ):
         application = MaukaKhojApplication(
-            lever_account_name="drivetrain",
+            sources_config={
+                "lever": {
+                    "account_name": "drivetrain",
+                },
+            },
             freshness_config={
                 "enabled": True,
                 "max_age_days": 30,
@@ -118,3 +126,19 @@ def test_application_accepts_freshness_configuration() -> None:
 
     assert len(result.rejected_jobs) == 1
     assert result.rejected_jobs[0].job.job_id == "lever:drivetrain:job-stale"
+
+
+def test_application_registers_lever_source() -> None:
+    """Verify the configured Lever source can be constructed."""
+    application = MaukaKhojApplication(
+        sources_config={
+            "lever": {
+                "account_name": "drivetrain",
+            },
+        },
+    )
+
+    try:
+        assert application is not None
+    finally:
+        application.close()

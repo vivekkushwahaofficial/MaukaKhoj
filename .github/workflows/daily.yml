@@ -12,6 +12,7 @@ permissions:
 jobs:
   daily-digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -30,6 +31,11 @@ jobs:
         env:
           PROFILE_JSON: ${{ secrets.PROFILE_JSON }}
         run: |
+          test -n "$PROFILE_JSON" || {
+            echo "PROFILE_JSON secret is missing or empty"
+            exit 1
+          }
+
           printf '%s' "$PROFILE_JSON" > data/profile.json
 
       - name: Run MaukaKhoj

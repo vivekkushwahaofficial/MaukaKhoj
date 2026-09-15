@@ -29,11 +29,13 @@ def main() -> None:
 
     sources_config = config["sources"]
     lever_config = sources_config["lever"]
+    freshness_config = config["freshness"]
     output_config = config["output"]
 
     application = MaukaKhojApplication(
         lever_account_name=lever_config["account_name"],
         request_timeout_seconds=float(sources_config["request_timeout_seconds"]),
+        freshness_config=freshness_config,
     )
 
     try:

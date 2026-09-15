@@ -16,5 +16,9 @@ matching:
   freshness_weight: 5
   employment_type_weight: 5
 
+freshness:
+  enabled: true
+  max_age_days: 30
+
 output:
   max_jobs_per_digest: 6

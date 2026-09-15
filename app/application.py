@@ -24,6 +24,7 @@ class MaukaKhojApplication:
         *,
         lever_account_name: str,
         request_timeout_seconds: float = 20.0,
+        freshness_config: dict[str, Any] | None = None,
     ) -> None:
         self._http_client = HttpClient(request_timeout_seconds)
 
@@ -43,7 +44,9 @@ class MaukaKhojApplication:
             normalization_pipeline=NormalizationPipeline(registry),
             validator=CanonicalJobValidator(),
             deduplicator=CanonicalJobDeduplicator(),
-            hard_filter=CanonicalJobHardFilter(),
+            hard_filter=CanonicalJobHardFilter(
+                freshness_config=freshness_config,
+            ),
             matcher=CanonicalJobProfileMatcher(),
             scorer=DeterministicJobScorer(),
             ranker=DeterministicJobRanker(),

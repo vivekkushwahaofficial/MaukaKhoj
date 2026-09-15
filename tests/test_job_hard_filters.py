@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,6 +16,7 @@ def create_job(
     *,
     job_id: str,
     remote_type: RemoteType,
+    posted_at: datetime | None = None,
 ) -> Job:
     return Job(
         job_id=job_id,
@@ -29,7 +30,7 @@ def create_job(
         employment_type=EmploymentType.FULL_TIME,
         experience_level=ExperienceLevel.ENTRY_LEVEL,
         skills=["Python"],
-        posted_at=datetime(2026, 9, 14),
+        posted_at=posted_at,
         application_url=f"https://example.com/apply/{job_id}",
         source_url=f"https://example.com/jobs/{job_id}",
     )
@@ -130,4 +131,96 @@ def test_empty_job_list_returns_empty_result() -> None:
     result = CanonicalJobHardFilter().filter([])
 
     assert result.eligible_jobs == ()
+    assert result.rejected_jobs == ()
+
+
+def test_hard_filter_rejects_stale_jobs() -> None:
+    stale_job = create_job(
+        job_id="job-stale",
+        remote_type=RemoteType.INDIA_REMOTE,
+        posted_at=datetime.now(timezone.utc) - timedelta(days=31),
+    )
+
+    result = CanonicalJobHardFilter(
+        freshness_config={
+            "enabled": True,
+            "max_age_days": 30,
+        },
+    ).filter([stale_job])
+
+    assert result.eligible_jobs == ()
+    assert len(result.rejected_jobs) == 1
+    assert result.rejected_jobs[0].job.job_id == "job-stale"
+    assert result.rejected_jobs[0].reason == RejectionReason.STALE
+
+
+def test_hard_filter_keeps_fresh_jobs() -> None:
+    fresh_job = create_job(
+        job_id="job-fresh",
+        remote_type=RemoteType.INDIA_REMOTE,
+        posted_at=datetime.now(timezone.utc) - timedelta(days=29),
+    )
+
+    result = CanonicalJobHardFilter(
+        freshness_config={
+            "enabled": True,
+            "max_age_days": 30,
+        },
+    ).filter([fresh_job])
+
+    assert result.eligible_jobs == (fresh_job,)
+    assert result.rejected_jobs == ()
+
+
+def test_hard_filter_keeps_jobs_without_posted_at() -> None:
+    undated_job = create_job(
+        job_id="job-undated",
+        remote_type=RemoteType.INDIA_REMOTE,
+        posted_at=None,
+    )
+
+    result = CanonicalJobHardFilter(
+        freshness_config={
+            "enabled": True,
+            "max_age_days": 30,
+        },
+    ).filter([undated_job])
+
+    assert result.eligible_jobs == (undated_job,)
+    assert result.rejected_jobs == ()
+
+
+def test_hard_filter_keeps_future_posted_jobs() -> None:
+    future_job = create_job(
+        job_id="job-future",
+        remote_type=RemoteType.INDIA_REMOTE,
+        posted_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+
+    result = CanonicalJobHardFilter(
+        freshness_config={
+            "enabled": True,
+            "max_age_days": 30,
+        },
+    ).filter([future_job])
+
+    assert result.eligible_jobs == (future_job,)
+    assert result.rejected_jobs == ()
+
+
+def test_hard_filter_can_disable_freshness() -> None:
+    stale_job = create_job(
+        job_id="job-stale",
+        remote_type=RemoteType.INDIA_REMOTE,
+        posted_at=datetime.now(timezone.utc) - timedelta(days=31),
+    )
+
+    result = CanonicalJobHardFilter(
+        freshness_config={
+            "enabled": False,
+            "max_age_days": 30,
+        },
+    ).filter([stale_job])
+
+    assert result.eligible_jobs == (stale_job,)
     assert result.rejected_jobs == ()

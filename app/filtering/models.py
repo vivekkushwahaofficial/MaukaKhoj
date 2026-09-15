@@ -9,6 +9,7 @@ class RejectionReason(str, Enum):
 
     ONSITE = "ONSITE"
     HYBRID = "HYBRID"
+    STALE = "STALE"
 
 
 @dataclass(frozen=True)

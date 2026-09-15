@@ -22,6 +22,10 @@ class AshbyAdapter(JobSourceAdapter):
     def source_name(self) -> str:
         return "ashby"
 
+    @property
+    def source_id(self) -> str:
+        return f"ashby:{self._job_board_name}"
+
     def fetch_jobs(self) -> list[dict[str, Any]]:
         """Fetch raw published job postings from Ashby."""
 

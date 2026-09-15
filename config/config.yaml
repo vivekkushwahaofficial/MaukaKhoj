@@ -6,7 +6,28 @@ sources:
   request_timeout_seconds: 20
 
   lever:
-    account_name: drivetrain
+    companies:
+      - slug: drivetrain
+        name: Drivetrain
+      - slug: gohighlevel
+        name: HighLevel
+
+  ashby:
+    companies:
+      - slug: openai
+        name: OpenAI
+      - slug: cohere
+        name: Cohere
+      - slug: notion
+        name: Notion
+      - slug: super.com
+        name: Super.com
+      - slug: ema
+        name: Ema
+      - slug: brooklyn-health
+        name: Brooklyn Health
+      - slug: savvymoney
+        name: SavvyMoney
 
 matching:
   role_weight: 25

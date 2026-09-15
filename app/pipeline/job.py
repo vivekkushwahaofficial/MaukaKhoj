@@ -65,7 +65,7 @@ class JobPipeline:
         for adapter in self._source_adapters:
             try:
                 fetched_jobs = adapter.fetch_jobs()
-                raw_jobs.append((adapter.source_name, fetched_jobs))
+                raw_jobs.append((adapter.source_id, fetched_jobs))
             except Exception as exc:
                 source_failures.append(
                     SourceFailure(

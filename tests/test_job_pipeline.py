@@ -12,10 +12,13 @@ from app.normalization.registry import NormalizationRegistry
 from app.pipeline.job import JobPipeline
 from app.ranking.job import DeterministicJobRanker
 from app.scoring.job import DeterministicJobScorer
+from app.sources.base import JobSourceAdapter
 from app.validation.job import CanonicalJobValidator
 
 
-class FakeSourceAdapter:
+class FakeSourceAdapter(JobSourceAdapter):
+    """Test source adapter implementing the production source contract."""
+
     def __init__(
         self,
         source: str,
@@ -30,6 +33,10 @@ class FakeSourceAdapter:
     def source_name(self) -> str:
         return self._source
 
+    @property
+    def source_id(self) -> str:
+        return self._source
+
     def fetch_jobs(self) -> list[dict]:
         if self._error is not None:
             raise self._error
@@ -38,6 +45,8 @@ class FakeSourceAdapter:
 
 
 class FakeNormalizer(JobNormalizer):
+    """Test normalizer that validates already-canonical job dictionaries."""
+
     def normalize(self, raw_job: dict) -> Job:
         return Job.model_validate(raw_job)
 
@@ -85,7 +94,7 @@ def make_profile() -> Profile:
 
 def make_pipeline(
     *,
-    source_adapters: list,
+    source_adapters: list[JobSourceAdapter],
 ) -> JobPipeline:
     registry = NormalizationRegistry()
     registry.register("test", FakeNormalizer())

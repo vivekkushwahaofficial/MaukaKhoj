@@ -19,9 +19,13 @@ class LeverAdapter(JobSourceAdapter):
     def source_name(self) -> str:
         return "lever"
 
+    @property
+    def source_id(self) -> str:
+        return f"lever:{self._account_name}"
+
     def fetch_jobs(self) -> list[dict[str, Any]]:
         """Fetch raw published job postings from Lever."""
-        url = f"https://api.lever.co/v0/postings/{self._account_name}" f"?mode=json"
+        url = f"https://api.lever.co/v0/postings/" f"{self._account_name}?mode=json"
 
         response = self._http_client.get_json(url)
 

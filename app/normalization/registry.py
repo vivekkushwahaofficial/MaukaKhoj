@@ -2,43 +2,48 @@ from app.normalization.base import JobNormalizer
 
 
 class NormalizationRegistry:
-    """Registry that maps source names to job normalizers."""
+    """Registry that maps source instance IDs to job normalizers."""
 
     def __init__(self) -> None:
         self._normalizers: dict[str, JobNormalizer] = {}
 
     def register(
         self,
-        source: str,
+        source_id: str,
         normalizer: JobNormalizer,
     ) -> None:
-        """Register a normalizer for a source."""
+        """Register a normalizer for a unique source instance."""
 
-        normalized_source = source.strip().lower()
+        normalized_source_id = source_id.strip().lower()
 
-        if not normalized_source:
-            raise ValueError("Normalization source cannot be empty.")
+        if not normalized_source_id:
+            raise ValueError("Normalization source ID cannot be empty.")
 
-        self._normalizers[normalized_source] = normalizer
+        if normalized_source_id in self._normalizers:
+            raise ValueError(
+                f"Normalizer already registered for source ID " f"'{source_id}'."
+            )
 
-    def get(self, source: str) -> JobNormalizer:
-        """Return the normalizer registered for a source."""
+        self._normalizers[normalized_source_id] = normalizer
 
-        normalized_source = source.strip().lower()
+    def get(self, source_id: str) -> JobNormalizer:
+        """Return the normalizer registered for a source instance."""
 
-        if not normalized_source:
-            raise ValueError("Normalization source cannot be empty.")
+        normalized_source_id = source_id.strip().lower()
+
+        if not normalized_source_id:
+            raise ValueError("Normalization source ID cannot be empty.")
 
         try:
-            return self._normalizers[normalized_source]
+            return self._normalizers[normalized_source_id]
         except KeyError as exc:
             raise ValueError(
-                f"No job normalizer registered for source '{source}'."
+                f"No job normalizer registered for source ID " f"'{source_id}'."
             ) from exc
 
-    def contains(self, source: str) -> bool:
-        """Return whether a normalizer is registered for a source."""
+    def contains(self, source_id: str) -> bool:
+        """Return whether a normalizer is registered for a source instance."""
 
-        normalized_source = source.strip().lower()
+        normalized_source_id = source_id.strip().lower()
 
-        return normalized_source in self._normalizers
+        return normalized_source_id in self._normalizers

@@ -8,8 +8,13 @@ class JobSourceAdapter(ABC):
     @property
     @abstractmethod
     def source_name(self) -> str:
-        """Return the unique name of the job source."""
+        """Return the source provider name."""
         raise NotImplementedError
+
+    @property
+    def source_id(self) -> str:
+        """Return the unique configured source instance identifier."""
+        return self.source_name
 
     @abstractmethod
     def fetch_jobs(self) -> list[dict[str, Any]]:

@@ -928,5 +928,3 @@ See the `LICENSE` file for details.
 MaukaKhoj is built for developers who want to spend less time searching through job boards and more time focusing on the opportunities that actually matter.
 
 **Fork it. Personalize it. Configure it. Build on it.**
-
-````

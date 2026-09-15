@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from app.deduplication.job import CanonicalJobDeduplicator
@@ -358,3 +359,90 @@ def test_pipeline_excludes_jobs_without_core_profile_relevance() -> None:
     assert [item.job.job_id for item in result.processed_jobs] == [
         "job-relevant",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Seniority and management filtering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Staff Software Engineer",
+        "Senior Software Engineer",
+        "Sr. Software Engineer",
+        "Principal Software Engineer",
+        "Distinguished Engineer",
+        "Fellow Engineer",
+        "Lead Software Engineer",
+        "Tech Lead",
+        "Team Lead",
+        "Software Architect",
+        "Engineering Manager",
+        "Software Engineering Director",
+        "VP Engineering",
+        "Vice President Engineering",
+        "Head of Engineering",
+        "Chief Technology Officer",
+        "CTO",
+    ],
+)
+def test_senior_or_management_titles_are_excluded(title: str) -> None:
+    assert JobPipeline._is_senior_or_management_title(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Software Engineer",
+        "Junior Software Engineer",
+        "Software Engineer Intern",
+        "Backend Engineer",
+        "Backend Developer",
+        "Java Developer",
+        "Full Stack Developer",
+        "Graduate Software Engineer",
+        "Trainee Software Engineer",
+        "Associate Software Engineer",
+    ],
+)
+def test_entry_level_titles_are_not_excluded(title: str) -> None:
+    assert JobPipeline._is_senior_or_management_title(title) is False
+
+
+def test_pipeline_excludes_staff_software_engineer() -> None:
+    staff_job = make_raw_job("staff-job")
+    staff_job["title"] = "Staff Software Engineer"
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [staff_job],
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(make_profile())
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()
+
+
+def test_pipeline_keeps_regular_software_engineer() -> None:
+    regular_job = make_raw_job("regular-job")
+    regular_job["title"] = "Software Engineer"
+    regular_job["description"] = (
+        "Build software systems using Java, Spring Boot, " "and backend technologies."
+    )
+
+    adapter = FakeSourceAdapter(
+        "test",
+        [regular_job],
+    )
+
+    result = make_pipeline(
+        source_adapters=[adapter],
+    ).run(make_profile())
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].job.job_id == "regular-job"

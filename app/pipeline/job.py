@@ -1,6 +1,8 @@
+import re
 from typing import Any
 
 from app.deduplication.base import JobDeduplicator
+from app.domain.job import Job
 from app.domain.profile import Profile
 from app.explanation.base import JobExplainer
 from app.filtering.base import JobHardFilter
@@ -21,17 +23,52 @@ from app.validation.base import JobValidator
 class JobPipeline:
     """Orchestrate the complete MaukaKhoj job-processing pipeline."""
 
-    @staticmethod
+    _SENIORITY_EXCLUDE_PATTERN = re.compile(
+        r"\b("
+        r"senior|"
+        r"sr\.?|"
+        r"staff|"
+        r"principal|"
+        r"distinguished|"
+        r"fellow|"
+        r"lead|"
+        r"tech\s+lead|"
+        r"team\s+lead|"
+        r"architect|"
+        r"manager|"
+        r"management|"
+        r"director|"
+        r"vp|"
+        r"vice\s+president|"
+        r"head\s+of|"
+        r"chief|"
+        r"cto"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _is_senior_or_management_title(cls, title: str) -> bool:
+        """Return whether a job title is outside the target seniority."""
+        return bool(cls._SENIORITY_EXCLUDE_PATTERN.search(title))
+
+    @classmethod
     def _is_profile_relevant(
+        cls,
+        job: Job,
         match_result,
         profile: Profile,
     ) -> bool:
         """Return whether a job is relevant to the configured profile.
 
-        A job must satisfy the configured location/remote preference gate when
-        those preferences are present. After that gate passes, at least one
-        core profile dimension (role, skills, or domain) must match.
+        A job must:
+        1. not have an explicitly senior or management title,
+        2. satisfy configured location/remote preferences when present,
+        3. have at least one core profile match.
         """
+
+        if cls._is_senior_or_management_title(job.title):
+            return False
 
         has_core_match = any(
             (
@@ -99,7 +136,7 @@ class JobPipeline:
                     )
                 )
 
-        normalized_jobs = []
+        normalized_jobs: list[Job] = []
 
         for source_id, source_jobs in raw_jobs:
             normalized_jobs.extend(
@@ -114,7 +151,6 @@ class JobPipeline:
 
         for job in normalized_jobs:
             validation_result = self._validator.validate(job)
-
             validation_results.append(validation_result)
 
             if validation_result.is_valid:
@@ -135,6 +171,7 @@ class JobPipeline:
             )
 
             if not self._is_profile_relevant(
+                job,
                 match_result,
                 profile,
             ):

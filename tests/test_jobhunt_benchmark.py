@@ -44,3 +44,35 @@ def test_stale_job_is_rejected() -> None:
 
     assert not result.eligible
     assert not result.freshness_allowed
+
+def test_benchmark_report_detects_seniority_and_location_leaks() -> None:
+    from types import SimpleNamespace
+
+    from app.benchmark.evaluator import evaluate_pipeline_result
+
+    job = SimpleNamespace(
+        job_id="job-1",
+        title="Staff Software Engineer",
+        company="Example",
+        location="Canada",
+        posted_at=datetime.now(timezone.utc),
+    )
+
+    processed = SimpleNamespace(job=job)
+
+    validation = SimpleNamespace(is_valid=True)
+
+    result = SimpleNamespace(
+        processed_jobs=(processed,),
+        validation_results=(validation,),
+        duplicates=(),
+        rejected_jobs=(),
+        source_failures=(),
+    )
+
+    report = evaluate_pipeline_result(result)
+
+    assert report.scanned == 1
+    assert report.valid == 1
+    assert len(report.seniority_leaks) == 1
+    assert len(report.location_leaks) == 1

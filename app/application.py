@@ -30,11 +30,7 @@ class MaukaKhojApplication:
         self._http_client = HttpClient(request_timeout_seconds)
 
         source_registry = SourceRegistry()
-
-        source_registry.register(
-            "lever",
-            self._build_lever_source,
-        )
+        self._register_sources(source_registry)
 
         source_adapters = []
         normalizer_registry = NormalizationRegistry()
@@ -70,6 +66,36 @@ class MaukaKhojApplication:
             explainer=DeterministicJobExplainer(),
         )
 
+    def _register_sources(
+        self,
+        registry: SourceRegistry,
+    ) -> None:
+        """Register all source builders supported by the application."""
+        registry.register(
+            "lever",
+            self._build_lever_source,
+        )
+
+    def _build_lever_source(
+        self,
+        config: dict[str, Any],
+    ):
+        """Build the Lever adapter and its normalizer."""
+        account_name = config.get("account_name")
+
+        if not isinstance(account_name, str) or not account_name.strip():
+            raise ValueError("Lever source requires a non-empty 'account_name'.")
+
+        account_name = account_name.strip()
+
+        return (
+            LeverAdapter(
+                account_name=account_name,
+                http_client=self._http_client,
+            ),
+            LeverJobNormalizer(account_name),
+        )
+
     def run(
         self,
         profile: Profile,
@@ -85,24 +111,3 @@ class MaukaKhojApplication:
     def close(self) -> None:
         """Release application resources."""
         self._http_client.close()
-
-    def _build_lever_source(
-        self,
-        config: dict[str, Any],
-    ):
-        """Build the Lever adapter and its normalizer."""
-
-        account_name = config.get("account_name")
-
-        if not isinstance(account_name, str) or not account_name.strip():
-            raise ValueError("Lever source requires a non-empty 'account_name'.")
-
-        account_name = account_name.strip()
-
-        return (
-            LeverAdapter(
-                account_name=account_name,
-                http_client=self._http_client,
-            ),
-            LeverJobNormalizer(account_name),
-        )

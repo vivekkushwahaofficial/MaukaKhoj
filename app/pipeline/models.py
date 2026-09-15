@@ -21,6 +21,14 @@ class ProcessedJob:
 
 
 @dataclass(frozen=True)
+class ProfileMatchedJob:
+    """Canonical job that passed hard filters and profile relevance."""
+
+    job: Job
+    match_result: MatchResult
+
+
+@dataclass(frozen=True)
 class SourceFailure:
     """Failure encountered while fetching jobs from one source."""
 
@@ -33,6 +41,7 @@ class PipelineResult:
     """Complete result produced by the MaukaKhoj job pipeline."""
 
     processed_jobs: tuple[ProcessedJob, ...] = field(default_factory=tuple)
+    profile_matched_jobs: tuple[ProfileMatchedJob, ...] = field(default_factory=tuple)
     validation_results: tuple[ValidationResult, ...] = field(default_factory=tuple)
     duplicates: tuple[DuplicateRecord, ...] = field(default_factory=tuple)
     rejected_jobs: tuple[RejectedJob, ...] = field(default_factory=tuple)

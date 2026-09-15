@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from app.application import MaukaKhojApplication
 from app.domain.profile import Profile
+from app.normalization.lever import LeverJobNormalizer
 
 
 def make_profile() -> Profile:
@@ -51,8 +52,24 @@ def make_job(
     }
 
 
+def make_lever_config(
+    *,
+    slug: str = "drivetrain",
+    name: str = "Drivetrain",
+) -> dict:
+    """Create a configured Lever company entry."""
+    return {
+        "companies": [
+            {
+                "slug": slug,
+                "name": name,
+            },
+        ],
+    }
+
+
 def test_application_creates_lever_pipeline() -> None:
-    """Verify the application wires the Lever source into the pipeline."""
+    """Verify the application wires a Lever company into the pipeline."""
     jobs = [
         make_job(
             job_id="job-1",
@@ -66,9 +83,7 @@ def test_application_creates_lever_pipeline() -> None:
     ):
         application = MaukaKhojApplication(
             sources_config={
-                "lever": {
-                    "account_name": "drivetrain",
-                },
+                "lever": make_lever_config(),
             },
         )
 
@@ -102,9 +117,7 @@ def test_application_accepts_freshness_configuration() -> None:
     ):
         application = MaukaKhojApplication(
             sources_config={
-                "lever": {
-                    "account_name": "drivetrain",
-                },
+                "lever": make_lever_config(),
             },
             freshness_config={
                 "enabled": True,
@@ -125,16 +138,14 @@ def test_application_accepts_freshness_configuration() -> None:
     ]
 
     assert len(result.rejected_jobs) == 1
-    assert result.rejected_jobs[0].job.job_id == "lever:drivetrain:job-stale"
+    assert result.rejected_jobs[0].job.job_id == ("lever:drivetrain:job-stale")
 
 
 def test_application_registers_lever_source() -> None:
-    """Verify the configured Lever source can be constructed."""
+    """Verify the configured Lever company can be constructed."""
     application = MaukaKhojApplication(
         sources_config={
-            "lever": {
-                "account_name": "drivetrain",
-            },
+            "lever": make_lever_config(),
         },
     )
 
@@ -142,3 +153,71 @@ def test_application_registers_lever_source() -> None:
         assert application is not None
     finally:
         application.close()
+
+
+def test_application_supports_multiple_lever_companies() -> None:
+    """Verify multiple Lever companies get independent source instances."""
+    with patch(
+        "app.application.LeverAdapter.fetch_jobs",
+        return_value=[],
+    ) as fetch_jobs:
+        application = MaukaKhojApplication(
+            sources_config={
+                "lever": {
+                    "companies": [
+                        {
+                            "slug": "drivetrain",
+                            "name": "Drivetrain",
+                        },
+                        {
+                            "slug": "gohighlevel",
+                            "name": "HighLevel",
+                        },
+                    ],
+                },
+            },
+        )
+
+        try:
+            application.run(make_profile())
+        finally:
+            application.close()
+
+    assert fetch_jobs.call_count == 2
+
+
+def test_application_keeps_lever_normalizers_isolated_by_company() -> None:
+    """Verify company-specific Lever normalizers do not overwrite each other."""
+    with patch(
+        "app.application.LeverAdapter.fetch_jobs",
+        return_value=[],
+    ):
+        application = MaukaKhojApplication(
+            sources_config={
+                "lever": {
+                    "companies": [
+                        {
+                            "slug": "drivetrain",
+                            "name": "Drivetrain",
+                        },
+                        {
+                            "slug": "gohighlevel",
+                            "name": "HighLevel",
+                        },
+                    ],
+                },
+            },
+        )
+
+        try:
+            registry = application._pipeline._normalization_pipeline._registry
+
+            drivetrain_normalizer = registry.get("lever:drivetrain")
+            highlevel_normalizer = registry.get("lever:gohighlevel")
+        finally:
+            application.close()
+
+    assert isinstance(drivetrain_normalizer, LeverJobNormalizer)
+    assert isinstance(highlevel_normalizer, LeverJobNormalizer)
+
+    assert drivetrain_normalizer is not highlevel_normalizer

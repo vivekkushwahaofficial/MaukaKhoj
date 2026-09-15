@@ -22,16 +22,36 @@ class JobPipeline:
     """Orchestrate the complete MaukaKhoj job-processing pipeline."""
 
     @staticmethod
-    def _is_profile_relevant(match_result) -> bool:
-        """Return whether a job has at least one core profile match."""
+    def _is_profile_relevant(
+        match_result,
+        profile: Profile,
+    ) -> bool:
+        """Return whether a job is relevant to the configured profile.
 
-        return any(
+        A job must satisfy the configured location/remote preference gate when
+        those preferences are present. After that gate passes, at least one
+        core profile dimension (role, skills, or domain) must match.
+        """
+
+        has_core_match = any(
             (
                 match_result.role.matched is True,
                 match_result.skills.matched is True,
                 match_result.domain.matched is True,
             )
         )
+
+        if not has_core_match:
+            return False
+
+        if profile.locations:
+            location_matches = match_result.location.matched is True
+            remote_matches = match_result.remote.matched is True
+
+            if not location_matches and not remote_matches:
+                return False
+
+        return True
 
     def __init__(
         self,
@@ -81,10 +101,10 @@ class JobPipeline:
 
         normalized_jobs = []
 
-        for source, source_jobs in raw_jobs:
+        for source_id, source_jobs in raw_jobs:
             normalized_jobs.extend(
                 self._normalization_pipeline.normalize(
-                    source,
+                    source_id,
                     source_jobs,
                 )
             )
@@ -114,7 +134,10 @@ class JobPipeline:
                 profile,
             )
 
-            if not self._is_profile_relevant(match_result):
+            if not self._is_profile_relevant(
+                match_result,
+                profile,
+            ):
                 continue
 
             profile_matched_jobs.append(

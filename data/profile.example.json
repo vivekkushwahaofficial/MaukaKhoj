@@ -1,33 +1,22 @@
 {
   "name": "Candidate",
   "target_titles": [
-    "Backend Developer",
-    "Java Developer",
     "Software Engineer",
-    "Software Development Engineer",
-    "Python Developer"
+    "Backend Developer"
   ],
   "skills": [
     "Java",
     "Spring Boot",
-    "Hibernate",
-    "SQL",
-    "PostgreSQL",
-    "Python",
-    "React",
-    "JavaScript",
-    "Git",
-    "REST API",
-    "DSA"
+    "SQL"
   ],
   "experience": {
     "years": 0,
-    "current_title": "Java Tech Stack Intern"
+    "current_title": "Student"
   },
   "education": {
     "degree": "B.Tech",
     "field": "Computer Science Engineering",
-    "institution": "Oriental Institute of Science & Technology"
+    "institution": "Example University"
   },
   "locations": [
     "India"
@@ -43,13 +32,9 @@
   ],
   "domains": [
     "Backend Development",
-    "Software Engineering",
-    "Web Development"
+    "Software Engineering"
   ],
   "projects": [
-    "MaukaKhoj",
-    "CodeVault",
-    "PeerNexus",
-    "RIDEON"
+    "Example Project"
   ]
 }

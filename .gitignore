@@ -16,3 +16,6 @@ data/state.json
 
 *.secret
 .env
+
+# Personal profile
+data/profile.json

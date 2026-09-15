@@ -1,0 +1,24 @@
+app:
+  name: MaukaKhoj
+  environment: development
+
+sources:
+  request_timeout_seconds: 20
+
+  lever:
+    account_name: drivetrain
+
+matching:
+  role_weight: 25
+  skills_weight: 30
+  experience_weight: 20
+  location_weight: 15
+  freshness_weight: 5
+  employment_type_weight: 5
+
+freshness:
+  enabled: true
+  max_age_days: 30
+
+output:
+  max_jobs_per_digest: 6

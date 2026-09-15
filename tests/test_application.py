@@ -65,7 +65,11 @@ def test_application_creates_lever_pipeline() -> None:
         return_value=jobs,
     ):
         application = MaukaKhojApplication(
-            lever_account_name="drivetrain",
+            sources_config={
+                "lever": {
+                    "account_name": "drivetrain",
+                },
+            },
         )
 
         try:
@@ -97,7 +101,11 @@ def test_application_accepts_freshness_configuration() -> None:
         return_value=[fresh_job, stale_job],
     ):
         application = MaukaKhojApplication(
-            lever_account_name="drivetrain",
+            sources_config={
+                "lever": {
+                    "account_name": "drivetrain",
+                },
+            },
             freshness_config={
                 "enabled": True,
                 "max_age_days": 30,

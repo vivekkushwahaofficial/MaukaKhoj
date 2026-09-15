@@ -13,6 +13,7 @@ from app.ranking.job import DeterministicJobRanker
 from app.scoring.job import DeterministicJobScorer
 from app.sources.http_client import HttpClient
 from app.sources.lever import LeverAdapter
+from app.sources.registry import SourceRegistry
 from app.validation.job import CanonicalJobValidator
 
 
@@ -22,26 +23,42 @@ class MaukaKhojApplication:
     def __init__(
         self,
         *,
-        lever_account_name: str,
+        sources_config: dict[str, Any],
         request_timeout_seconds: float = 20.0,
         freshness_config: dict[str, Any] | None = None,
     ) -> None:
         self._http_client = HttpClient(request_timeout_seconds)
 
-        lever_adapter = LeverAdapter(
-            account_name=lever_account_name,
-            http_client=self._http_client,
+        source_registry = SourceRegistry()
+
+        source_registry.register(
+            "lever",
+            self._build_lever_source,
         )
 
-        registry = NormalizationRegistry()
-        registry.register(
-            "lever",
-            LeverJobNormalizer(lever_account_name),
-        )
+        source_adapters = []
+        normalizer_registry = NormalizationRegistry()
+
+        for source_name, source_config in sources_config.items():
+            if source_name == "request_timeout_seconds":
+                continue
+
+            adapter, normalizer = source_registry.build(
+                source_name,
+                source_config,
+            )
+
+            source_adapters.append(adapter)
+            normalizer_registry.register(
+                source_name,
+                normalizer,
+            )
 
         self._pipeline = JobPipeline(
-            source_adapters=[lever_adapter],
-            normalization_pipeline=NormalizationPipeline(registry),
+            source_adapters=source_adapters,
+            normalization_pipeline=NormalizationPipeline(
+                normalizer_registry,
+            ),
             validator=CanonicalJobValidator(),
             deduplicator=CanonicalJobDeduplicator(),
             hard_filter=CanonicalJobHardFilter(
@@ -59,7 +76,7 @@ class MaukaKhojApplication:
         *,
         limit: int | None = None,
     ):
-        """Run the configured Lever pipeline for a profile."""
+        """Run the configured job pipeline for a profile."""
         return self._pipeline.run(
             profile,
             limit=limit,
@@ -68,3 +85,24 @@ class MaukaKhojApplication:
     def close(self) -> None:
         """Release application resources."""
         self._http_client.close()
+
+    def _build_lever_source(
+        self,
+        config: dict[str, Any],
+    ):
+        """Build the Lever adapter and its normalizer."""
+
+        account_name = config.get("account_name")
+
+        if not isinstance(account_name, str) or not account_name.strip():
+            raise ValueError("Lever source requires a non-empty 'account_name'.")
+
+        account_name = account_name.strip()
+
+        return (
+            LeverAdapter(
+                account_name=account_name,
+                http_client=self._http_client,
+            ),
+            LeverJobNormalizer(account_name),
+        )

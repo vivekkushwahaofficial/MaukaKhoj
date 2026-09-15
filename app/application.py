@@ -5,12 +5,14 @@ from app.domain.profile import Profile
 from app.explanation.job import DeterministicJobExplainer
 from app.filtering.job import CanonicalJobHardFilter
 from app.matching.job import CanonicalJobProfileMatcher
+from app.normalization.base import JobNormalizer
 from app.normalization.lever import LeverJobNormalizer
 from app.normalization.pipeline import NormalizationPipeline
 from app.normalization.registry import NormalizationRegistry
 from app.pipeline.job import JobPipeline
 from app.ranking.job import DeterministicJobRanker
 from app.scoring.job import DeterministicJobScorer
+from app.sources.base import JobSourceAdapter
 from app.sources.http_client import HttpClient
 from app.sources.lever import LeverAdapter
 from app.sources.registry import SourceRegistry
@@ -27,15 +29,18 @@ class MaukaKhojApplication:
         request_timeout_seconds: float = 20.0,
         freshness_config: dict[str, Any] | None = None,
     ) -> None:
+        """Initialize the application from source and pipeline configuration."""
         self._http_client = HttpClient(request_timeout_seconds)
 
         source_registry = SourceRegistry()
         self._register_sources(source_registry)
 
-        source_adapters = []
+        source_adapters: list[JobSourceAdapter] = []
         normalizer_registry = NormalizationRegistry()
 
         for source_name, source_config in sources_config.items():
+            # request_timeout_seconds is an application-level setting,
+            # not a job source.
             if source_name == "request_timeout_seconds":
                 continue
 
@@ -79,7 +84,7 @@ class MaukaKhojApplication:
     def _build_lever_source(
         self,
         config: dict[str, Any],
-    ):
+    ) -> tuple[JobSourceAdapter, JobNormalizer]:
         """Build the Lever adapter and its normalizer."""
         account_name = config.get("account_name")
 

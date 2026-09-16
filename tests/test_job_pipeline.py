@@ -88,7 +88,11 @@ def make_raw_job(job_id: str) -> dict:
 def make_profile() -> Profile:
     return Profile(
         name="Test User",
-        target_titles=["Backend Engineer"],
+        target_titles=[
+            "Backend Engineer",
+            "Backend Developer",
+            "Software Engineer",
+        ],
         skills=["Java", "Spring Boot"],
         locations=["India"],
         remote_preferences=["INDIA_REMOTE"],

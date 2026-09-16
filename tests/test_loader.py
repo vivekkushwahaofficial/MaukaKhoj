@@ -14,12 +14,31 @@ def test_load_config():
     assert config["matching"]["skills_weight"] == 30
 
 
-def test_load_profile():
-    profile = load_profile("data/profile.json")
+def test_load_profile(tmp_path):
+    profile_file = tmp_path / "profile.json"
+    profile_file.write_text(
+        json.dumps(
+            {
+                "name": "Test User",
+                "target_titles": ["Backend Developer"],
+                "skills": ["Java"],
+                "locations": ["India"],
+                "remote_preferences": ["INDIA_REMOTE"],
+                "employment_preferences": ["INTERNSHIP"],
+                "domains": ["Backend Development"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    assert profile.name == "Candidate"
+    profile = load_profile(profile_file)
+
+    assert profile.name == "Test User"
     assert "Java" in profile.skills
     assert "Backend Developer" in profile.target_titles
+    assert "India" in profile.locations
+    assert "INDIA_REMOTE" in profile.remote_preferences
+    assert "INTERNSHIP" in profile.employment_preferences
 
 
 def test_load_config_rejects_missing_file(tmp_path):
@@ -46,7 +65,10 @@ def test_load_config_rejects_non_object(tmp_path):
 
 def test_load_profile_rejects_non_object(tmp_path):
     profile_file = tmp_path / "invalid.json"
-    profile_file.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
+    profile_file.write_text(
+        json.dumps(["not", "an", "object"]),
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValueError, match="JSON object"):
         load_profile(profile_file)

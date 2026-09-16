@@ -88,19 +88,23 @@ class JobPipeline:
         # Core profile relevance
         # --------------------------------------------------------------
         #
-        # At least one of role, skills, or domain must provide a
-        # deterministic positive match.
+        # If target titles are configured, the job title must match one
+        # of those target titles.
         #
-        has_core_match = any(
-            (
-                match_result.role.matched is True,
-                match_result.skills.matched is True,
-                match_result.domain.matched is True,
-            )
-        )
-
-        if not has_core_match:
-            return False
+        # If no target titles are configured, skills or domain can provide
+        # the core relevance signal.
+        #
+        if profile.target_titles:
+            if match_result.role.matched is not True:
+                return False
+        else:
+            if not any(
+                (
+                    match_result.skills.matched is True,
+                    match_result.domain.matched is True,
+                )
+            ):
+                return False
 
         # --------------------------------------------------------------
         # Location / remote gate

@@ -63,20 +63,34 @@ class JobPipeline:
         return bool(cls._SENIORITY_EXCLUDE_PATTERN.search(title))
 
     @classmethod
-    def _is_profile_relevant(
+    def _profile_relevance_reason(
         cls,
         job: Job,
         match_result,
         profile: Profile,
-    ) -> bool:
+    ) -> str | None:
         """
-        Return whether a job is relevant to the configured profile.
+        Return the reason a job is rejected by the profile relevance gate.
 
-        A job must:
-        1. not have an explicitly senior or management title,
-        2. satisfy configured location/remote preferences when present,
-        3. have at least one core profile match,
-        4. satisfy an explicit education requirement when one exists.
+        Returns:
+            None if the job is profile-relevant.
+            A stable reason string if the job is rejected.
+
+        Rejection reasons:
+            seniority:
+                Explicit senior or management title.
+
+            core_profile:
+                No configured target-title match, or when target titles
+                are absent, neither skills nor domain matches.
+
+            location_remote:
+                Neither configured location nor configured remote
+                preference matches.
+
+            education:
+                An explicit education requirement exists and the profile
+                does not satisfy it.
 
         Education with UNKNOWN or NOT_REQUIRED status remains neutral.
         """
@@ -85,7 +99,7 @@ class JobPipeline:
         # Seniority gate
         # --------------------------------------------------------------
         if cls._is_senior_or_management_title(job.title):
-            return False
+            return "seniority"
 
         # --------------------------------------------------------------
         # Core profile relevance
@@ -99,7 +113,7 @@ class JobPipeline:
         #
         if profile.target_titles:
             if match_result.role.matched is not True:
-                return False
+                return "core_profile"
         else:
             if not any(
                 (
@@ -107,7 +121,7 @@ class JobPipeline:
                     match_result.domain.matched is True,
                 )
             ):
-                return False
+                return "core_profile"
 
         # --------------------------------------------------------------
         # Location / remote gate
@@ -121,7 +135,7 @@ class JobPipeline:
             remote_matches = match_result.remote.matched is True
 
             if not location_matches and not remote_matches:
-                return False
+                return "location_remote"
 
         # --------------------------------------------------------------
         # Education gate
@@ -140,9 +154,9 @@ class JobPipeline:
 
         if education_status == EducationRequirementStatus.REQUIRED:
             if match_result.education.matched is not True:
-                return False
+                return "education"
 
-        return True
+        return None
 
     def __init__(
         self,
@@ -215,10 +229,6 @@ class JobPipeline:
                     exc,
                 )
 
-        total_fetched = sum(
-            len(source_jobs)
-            for _, source_jobs in raw_jobs
-        )
         total_fetched = sum(len(source_jobs) for _, source_jobs in raw_jobs)
 
         logger.info(
@@ -298,6 +308,18 @@ class JobPipeline:
         match_results = {}
         profile_matched_jobs = []
 
+        # Keep rejection counts separate so the pipeline can expose
+        # exactly why hard-filter-eligible jobs failed profile relevance.
+        #
+        # This is intentionally diagnostic only. It does not change
+        # the existing relevance rules.
+        relevance_rejections = {
+            "seniority": 0,
+            "core_profile": 0,
+            "location_remote": 0,
+            "education": 0,
+        }
+
         for job in filter_result.eligible_jobs:
             match_result = self._matcher.match(
                 job,
@@ -306,11 +328,14 @@ class JobPipeline:
 
             # Apply seniority, core relevance, location/remote,
             # and education eligibility before scoring.
-            if not self._is_profile_relevant(
+            rejection_reason = self._profile_relevance_reason(
                 job,
                 match_result,
                 profile,
-            ):
+            )
+
+            if rejection_reason is not None:
+                relevance_rejections[rejection_reason] += 1
                 continue
 
             profile_matched_jobs.append(
@@ -339,6 +364,16 @@ class JobPipeline:
             "Pipeline profile relevance: %d matched / %d hard-filter eligible",
             len(profile_matched_jobs),
             len(filter_result.eligible_jobs),
+        )
+
+        logger.info(
+            "Pipeline relevance rejections: "
+            "seniority=%d, core_profile=%d, "
+            "location_remote=%d, education=%d",
+            relevance_rejections["seniority"],
+            relevance_rejections["core_profile"],
+            relevance_rejections["location_remote"],
+            relevance_rejections["education"],
         )
 
         # --------------------------------------------------------------

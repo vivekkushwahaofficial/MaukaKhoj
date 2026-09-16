@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any
 
@@ -19,6 +20,8 @@ from app.ranking.base import JobRanker
 from app.scoring.base import JobScorer
 from app.sources.base import JobSourceAdapter
 from app.validation.base import JobValidator
+
+logger = logging.getLogger(__name__)
 
 
 class JobPipeline:
@@ -185,12 +188,19 @@ class JobPipeline:
             try:
                 fetched_jobs = adapter.fetch_jobs()
 
+                logger.info(
+                    "Source fetched: %s -> %d jobs",
+                    adapter.source_id,
+                    len(fetched_jobs),
+                )
+
                 raw_jobs.append(
                     (
                         adapter.source_id,
                         fetched_jobs,
                     )
                 )
+
             except Exception as exc:
                 source_failures.append(
                     SourceFailure(
@@ -198,6 +208,28 @@ class JobPipeline:
                         error=str(exc),
                     )
                 )
+
+                logger.warning(
+                    "Source failed: %s -> %s",
+                    adapter.source_id,
+                    exc,
+                )
+
+        total_fetched = sum(
+            len(source_jobs)
+            for _, source_jobs in raw_jobs
+        )
+        total_fetched = sum(len(source_jobs) for _, source_jobs in raw_jobs)
+
+        logger.info(
+            "Pipeline source fetch total: %d jobs",
+            total_fetched,
+        )
+
+        logger.info(
+            "Pipeline source failures: %d",
+            len(source_failures),
+        )
 
         # --------------------------------------------------------------
         # Normalization
@@ -211,6 +243,11 @@ class JobPipeline:
                     source_jobs,
                 )
             )
+
+        logger.info(
+            "Pipeline normalized: %d jobs",
+            len(normalized_jobs),
+        )
 
         # --------------------------------------------------------------
         # Validation
@@ -226,15 +263,33 @@ class JobPipeline:
             if validation_result.is_valid:
                 valid_jobs.append(job)
 
+        logger.info(
+            "Pipeline validation: %d valid / %d normalized",
+            len(valid_jobs),
+            len(normalized_jobs),
+        )
+
         # --------------------------------------------------------------
         # Deduplication
         # --------------------------------------------------------------
         deduplication_result = self._deduplicator.deduplicate(valid_jobs)
 
+        logger.info(
+            "Pipeline deduplication: %d unique / %d valid",
+            len(deduplication_result.unique_jobs),
+            len(valid_jobs),
+        )
+
         # --------------------------------------------------------------
         # Hard filtering
         # --------------------------------------------------------------
         filter_result = self._hard_filter.filter(list(deduplication_result.unique_jobs))
+
+        logger.info(
+            "Pipeline hard filter: %d eligible / %d rejected",
+            len(filter_result.eligible_jobs),
+            len(filter_result.rejected_jobs),
+        )
 
         # --------------------------------------------------------------
         # Profile matching and scoring
@@ -280,12 +335,24 @@ class JobPipeline:
 
             match_results[job.job_id] = match_result
 
+        logger.info(
+            "Pipeline profile relevance: %d matched / %d hard-filter eligible",
+            len(profile_matched_jobs),
+            len(filter_result.eligible_jobs),
+        )
+
         # --------------------------------------------------------------
         # Ranking
         # --------------------------------------------------------------
         ranking_result = self._ranker.rank(
             scored_jobs,
             limit=limit,
+        )
+
+        logger.info(
+            "Pipeline ranking: %d selected / %d scored",
+            len(ranking_result.selected_jobs),
+            len(scored_jobs),
         )
 
         # --------------------------------------------------------------
@@ -312,6 +379,11 @@ class JobPipeline:
                     rank=ranked_job.rank,
                 )
             )
+
+        logger.info(
+            "Pipeline complete: %d final jobs",
+            len(processed_jobs),
+        )
 
         # --------------------------------------------------------------
         # Final pipeline result

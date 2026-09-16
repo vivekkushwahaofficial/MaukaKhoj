@@ -320,6 +320,14 @@ class JobPipeline:
             "education": 0,
         }
 
+        # Keep only a small number of unique examples for diagnostics.
+        relevance_rejection_samples: dict[str, list[str]] = {
+            "seniority": [],
+            "core_profile": [],
+            "location_remote": [],
+            "education": [],
+        }
+
         for job in filter_result.eligible_jobs:
             match_result = self._matcher.match(
                 job,
@@ -334,10 +342,22 @@ class JobPipeline:
                 profile,
             )
 
+            # ----------------------------------------------------------
+            # Rejection diagnostics
+            # ----------------------------------------------------------
             if rejection_reason is not None:
                 relevance_rejections[rejection_reason] += 1
+
+                samples = relevance_rejection_samples[rejection_reason]
+
+                if job.title not in samples and len(samples) < 10:
+                    samples.append(job.title)
+
                 continue
 
+            # ----------------------------------------------------------
+            # Profile matched job
+            # ----------------------------------------------------------
             profile_matched_jobs.append(
                 ProfileMatchedJob(
                     job=job,
@@ -345,6 +365,9 @@ class JobPipeline:
                 )
             )
 
+            # ----------------------------------------------------------
+            # Scoring
+            # ----------------------------------------------------------
             job_score = self._scorer.score(
                 job,
                 profile,
@@ -375,6 +398,14 @@ class JobPipeline:
             relevance_rejections["location_remote"],
             relevance_rejections["education"],
         )
+
+        for reason, samples in relevance_rejection_samples.items():
+            if samples:
+                logger.info(
+                    "Pipeline relevance rejection samples [%s]: %s",
+                    reason,
+                    " | ".join(samples),
+                )
 
         # --------------------------------------------------------------
         # Ranking

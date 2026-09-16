@@ -301,6 +301,18 @@ class JobPipeline:
             len(filter_result.rejected_jobs),
         )
 
+        logger.info(
+            "Pipeline profile configuration: "
+            "target_titles=%d, skills=%d, locations=%d, "
+            "remote_preferences=%d, employment_preferences=%d, domains=%d",
+            len(profile.target_titles),
+            len(profile.skills),
+            len(profile.locations),
+            len(profile.remote_preferences),
+            len(profile.employment_preferences),
+            len(profile.domains),
+        )
+
         # --------------------------------------------------------------
         # Profile matching and scoring
         # --------------------------------------------------------------
@@ -350,8 +362,29 @@ class JobPipeline:
 
                 samples = relevance_rejection_samples[rejection_reason]
 
-                if job.title not in samples and len(samples) < 10:
-                    samples.append(job.title)
+                if len(samples) < 10:
+                    if rejection_reason == "core_profile":
+                        sample = (
+                            f"title={job.title!r}; "
+                            f"role_matched={match_result.role.matched!r}; "
+                            f"skills_matched={match_result.skills.matched!r}; "
+                            f"domain_matched={match_result.domain.matched!r}"
+                        )
+                    elif rejection_reason == "location_remote":
+                        sample = (
+                            f"title={job.title!r}; "
+                            f"location={job.location!r}; "
+                            f"remote_type={job.remote_type!r}; "
+                            f"location_matched={match_result.location.matched!r}; "
+                            f"remote_matched={match_result.remote.matched!r}"
+                        )
+                    elif rejection_reason == "seniority":
+                        sample = f"title={job.title!r}"
+                    else:
+                        sample = f"title={job.title!r}"
+
+                    if sample not in samples:
+                        samples.append(sample)
 
                 continue
 
@@ -400,11 +433,19 @@ class JobPipeline:
         )
 
         for reason, samples in relevance_rejection_samples.items():
-            if samples:
+            if not samples:
+                continue
+
+            logger.info(
+                "Pipeline relevance rejection samples [%s]:",
+                reason,
+            )
+
+            for index, sample in enumerate(samples, start=1):
                 logger.info(
-                    "Pipeline relevance rejection samples [%s]: %s",
-                    reason,
-                    " | ".join(samples),
+                    "  [%d] %s",
+                    index,
+                    sample,
                 )
 
         # --------------------------------------------------------------

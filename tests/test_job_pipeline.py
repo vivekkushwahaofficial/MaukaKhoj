@@ -15,6 +15,11 @@ from app.normalization.base import JobNormalizer
 from app.normalization.pipeline import NormalizationPipeline
 from app.normalization.registry import NormalizationRegistry
 from app.pipeline.job import JobPipeline
+from app.ai.semantic.batch import SemanticJobBatchAnalyzer
+from app.ai.semantic.models import (
+    SemanticJobAnalysis,
+    SemanticJobAnalysisResponse,
+)
 from app.ranking.job import DeterministicJobRanker
 from app.scoring.job import DeterministicJobScorer
 from app.sources.base import JobSourceAdapter
@@ -709,3 +714,81 @@ def test_pipeline_accepts_matching_graduation_range() -> None:
 
     assert len(result.profile_matched_jobs) == 1
     assert result.profile_matched_jobs[0].match_result.education.matched is True
+
+
+def test_pipeline_can_rescue_semantically_matching_title_mismatch() -> None:
+    class FakeSemanticAnalyzer:
+        def analyze(self, request):
+            return SemanticJobAnalysisResponse(
+                analyses=(
+                    SemanticJobAnalysis(
+                        job_id=request.jobs[0]["job_id"],
+                        role_family="software_engineering",
+                        seniority="entry_level",
+                        confidence=0.9,
+                    ),
+                ),
+            )
+
+    job = make_job(
+        "semantic-rescue",
+        title="Developer, Agency Success",
+    )
+
+    pipeline = make_pipeline(
+        source_adapters=[
+            FakeSourceAdapter(
+                "test",
+                [job.model_dump(mode="json")],
+            )
+        ],
+    )
+
+    pipeline._semantic_analyzer = SemanticJobBatchAnalyzer(
+        FakeSemanticAnalyzer(),
+        batch_size=8,
+    )
+
+    result = pipeline.run(make_profile())
+
+    assert len(result.profile_matched_jobs) == 1
+    assert result.profile_matched_jobs[0].job.job_id == "semantic-rescue"
+
+
+def test_pipeline_does_not_use_semantic_analysis_for_senior_title() -> None:
+    class FakeSemanticAnalyzer:
+        def analyze(self, request):
+            return SemanticJobAnalysisResponse(
+                analyses=(
+                    SemanticJobAnalysis(
+                        job_id=request.jobs[0]["job_id"],
+                        role_family="software_engineering",
+                        seniority="entry_level",
+                        confidence=0.9,
+                    ),
+                ),
+            )
+
+    job = make_job(
+        "semantic-senior",
+        title="Senior Developer, Agency Success",
+    )
+
+    pipeline = make_pipeline(
+        source_adapters=[
+            FakeSourceAdapter(
+                "test",
+                [job.model_dump(mode="json")],
+            )
+        ],
+    )
+
+    pipeline._semantic_analyzer = SemanticJobBatchAnalyzer(
+        FakeSemanticAnalyzer(),
+        batch_size=8,
+    )
+
+    result = pipeline.run(make_profile())
+
+    assert result.profile_matched_jobs == ()
+    assert result.processed_jobs == ()

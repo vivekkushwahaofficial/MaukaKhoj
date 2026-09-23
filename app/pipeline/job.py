@@ -10,6 +10,9 @@ from app.explanation.base import JobExplainer
 from app.filtering.base import JobHardFilter
 from app.matching.base import JobProfileMatcher
 from app.normalization.pipeline import NormalizationPipeline
+from app.ai.semantic.batch import SemanticJobBatchAnalyzer
+from app.ai.semantic.models import SemanticJobAnalysis
+from app.matching.semantic_gate import SemanticRelevanceGate
 from app.pipeline.models import (
     PipelineResult,
     ProcessedJob,
@@ -170,6 +173,8 @@ class JobPipeline:
         scorer: JobScorer,
         ranker: JobRanker,
         explainer: JobExplainer,
+        semantic_analyzer: SemanticJobBatchAnalyzer | None = None,
+        semantic_gate: SemanticRelevanceGate | None = None,
     ) -> None:
         """Initialize the pipeline with its processing components."""
 
@@ -182,6 +187,8 @@ class JobPipeline:
         self._scorer = scorer
         self._ranker = ranker
         self._explainer = explainer
+        self._semantic_analyzer = semantic_analyzer
+        self._semantic_gate = semantic_gate or SemanticRelevanceGate()
 
     def run(
         self,
@@ -340,19 +347,64 @@ class JobPipeline:
             "education": [],
         }
 
-        for job in filter_result.eligible_jobs:
-            match_result = self._matcher.match(
+        deterministic_matches = {
+            job.job_id: self._matcher.match(
                 job,
                 profile,
+            )
+            for job in filter_result.eligible_jobs
+        }
+
+        semantic_candidates = tuple(
+            job
+            for job in filter_result.eligible_jobs
+            if (
+                profile.target_titles
+                and deterministic_matches[job.job_id].role.matched is not True
+                and not self._is_senior_or_management_title(job.title)
+            )
+        )
+
+        semantic_analyses: dict[str, SemanticJobAnalysis] = {}
+
+        if self._semantic_analyzer is not None and semantic_candidates:
+            semantic_jobs = tuple(
+                {
+                    "job_id": job.job_id,
+                    "title": job.title,
+                    "description": job.description[:6000],
+                    "skills": job.skills,
+                }
+                for job in semantic_candidates
             )
 
-            # Apply seniority, core relevance, location/remote,
-            # and education eligibility before scoring.
-            rejection_reason = self._profile_relevance_reason(
-                job,
-                match_result,
-                profile,
-            )
+            for analysis in self._semantic_analyzer.analyze(semantic_jobs):
+                semantic_analyses[analysis.job_id] = analysis
+
+        for job in filter_result.eligible_jobs:
+            match_result = deterministic_matches[job.job_id]
+            semantic_analysis = semantic_analyses.get(job.job_id)
+
+            if (
+                profile.target_titles
+                and match_result.role.matched is not True
+            ):
+                semantic_allowed = self._semantic_gate.allows_core_profile(
+                    job=job,
+                    match_result=match_result,
+                    profile=profile,
+                    semantic_analysis=semantic_analysis,
+                )
+
+                rejection_reason = (
+                    None if semantic_allowed else "core_profile"
+                )
+            else:
+                rejection_reason = self._profile_relevance_reason(
+                    job,
+                    match_result,
+                    profile,
+                )
 
             # ----------------------------------------------------------
             # Rejection diagnostics

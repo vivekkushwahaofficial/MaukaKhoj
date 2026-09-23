@@ -15,17 +15,7 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
     # ------------------------------------------------------------------
     # Degree aliases
     # ------------------------------------------------------------------
-    #
-    # These aliases allow equivalent degree names to match.
-    #
-    # Example:
-    #   B.Tech
-    #   BTech
-    #   Bachelor of Technology
-    #   Bachelor's Degree
-    #
-    # are treated as bachelor's-level degrees.
-    #
+
     _DEGREE_ALIASES: dict[str, frozenset[str]] = {
         "bachelor": frozenset(
             {
@@ -68,10 +58,7 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
     # ------------------------------------------------------------------
     # Academic field aliases
     # ------------------------------------------------------------------
-    #
-    # Keep this intentionally conservative to avoid false-positive
-    # matches between unrelated academic fields.
-    #
+
     _FIELD_ALIASES: dict[str, frozenset[str]] = {
         "computer science": frozenset(
             {
@@ -128,22 +115,49 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         job: Job,
         profile: Profile,
     ) -> MatchDimension:
-        """Match the job title against configured target titles."""
+        """
+        Match a job title against configured target titles and
+        conservative role families.
+
+        Direct target-title matching is checked first.
+
+        Role-family matching exists to recognize equivalent
+        software-engineering title variants such as:
+
+        Software Engineer
+        Software Developer
+        Software Development Engineer
+
+        Seniority is intentionally NOT handled here. The pipeline's
+        existing seniority hard-filter remains responsible for rejecting
+        senior/staff/lead/manager/director/etc. roles.
+        """
 
         job_title = self._normalize(job.title)
 
-        matched = tuple(
+        # --------------------------------------------------------------
+        # Direct target-title matching
+        # --------------------------------------------------------------
+        #
+        # Preserve the original behavior first. This means an explicitly
+        # configured title remains the strongest deterministic match.
+        #
+        direct_matches = tuple(
             title
             for title in profile.target_titles
             if self._normalize(title) in job_title
         )
 
-        if matched:
+        if direct_matches:
             return MatchDimension(
                 matched=True,
-                matched_values=matched,
-                evidence=("Job title matches a target title.",),
+                matched_values=direct_matches,
+                evidence=("Job title matches a configured target title.",),
             )
+
+        # --------------------------------------------------------------
+        # No target titles configured
+        # --------------------------------------------------------------
 
         if not profile.target_titles:
             return MatchDimension(
@@ -151,10 +165,165 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 evidence=("No target titles are configured.",),
             )
 
+        normalized_targets = {self._normalize(title) for title in profile.target_titles}
+
+        family_matches_found: list[str] = []
+
+        # --------------------------------------------------------------
+        # Software-engineering family
+        # --------------------------------------------------------------
+        #
+        # These title forms are intentionally conservative.
+        #
+        # Examples that match:
+        #   Software Development Engineer
+        #   Software Development Engineer II
+        #   Software Developer
+        #   Software Engineer
+        #   Software Engineering Intern
+        #   Application Developer
+        #
+        # Examples that do NOT match:
+        #   Business Development Specialist
+        #   Graphic Designer
+        #   Product Manager
+        #   Revenue Operations Analyst
+        #
+        software_target_configured = any(
+            target in normalized_targets
+            for target in (
+                "software engineer",
+                "software developer",
+                "software engineering intern",
+                "software developer intern",
+                "software engineer intern",
+            )
+        )
+
+        software_title_variants = (
+            "software engineer",
+            "software engineering",
+            "software developer",
+            "software development engineer",
+            "application engineer",
+            "application developer",
+        )
+
+        if software_target_configured and any(
+            job_title.startswith(variant) for variant in software_title_variants
+        ):
+            family_matches_found.append(
+                "software engineering",
+            )
+
+        # --------------------------------------------------------------
+        # Backend-engineering family
+        # --------------------------------------------------------------
+
+        backend_target_configured = any(
+            target in normalized_targets
+            for target in (
+                "backend engineer",
+                "backend developer",
+                "backend engineer intern",
+                "backend developer intern",
+            )
+        )
+
+        backend_title_variants = (
+            "backend engineer",
+            "backend developer",
+            "back end engineer",
+            "back end developer",
+            "backend software engineer",
+            "backend software developer",
+            "back end software engineer",
+            "back end software developer",
+        )
+
+        if backend_target_configured and any(
+            job_title.startswith(variant) for variant in backend_title_variants
+        ):
+            family_matches_found.append(
+                "backend engineering",
+            )
+
+        # --------------------------------------------------------------
+        # Java-engineering family
+        # --------------------------------------------------------------
+
+        java_target_configured = any(
+            target in normalized_targets
+            for target in (
+                "java developer",
+                "java developer intern",
+                "java software engineer",
+            )
+        )
+
+        java_title_variants = (
+            "java engineer",
+            "java developer",
+            "java software engineer",
+            "java software developer",
+        )
+
+        if java_target_configured and any(
+            job_title.startswith(variant) for variant in java_title_variants
+        ):
+            family_matches_found.append(
+                "java engineering",
+            )
+
+        # --------------------------------------------------------------
+        # Full-stack engineering family
+        # --------------------------------------------------------------
+
+        full_stack_target_configured = any(
+            target in normalized_targets
+            for target in (
+                "full stack developer",
+                "junior full stack developer",
+                "full stack developer intern",
+            )
+        )
+
+        full_stack_title_variants = (
+            "full stack engineer",
+            "full stack developer",
+            "fullstack engineer",
+            "fullstack developer",
+        )
+
+        if full_stack_target_configured and any(
+            job_title.startswith(variant) for variant in full_stack_title_variants
+        ):
+            family_matches_found.append(
+                "full-stack engineering",
+            )
+
+        # --------------------------------------------------------------
+        # Family match found
+        # --------------------------------------------------------------
+
+        if family_matches_found:
+            return MatchDimension(
+                matched=True,
+                matched_values=tuple(family_matches_found),
+                evidence=("Job title matches a configured role family.",),
+            )
+
+        # --------------------------------------------------------------
+        # No role match
+        # --------------------------------------------------------------
+
         return MatchDimension(
             matched=False,
             missing_values=tuple(profile.target_titles),
-            evidence=("Job title does not match configured target titles.",),
+            evidence=(
+                "Job title does not match configured target titles "
+                "or supported role families.",
+            ),
         )
 
     def _match_skills(
@@ -164,10 +333,8 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
     ) -> MatchDimension:
         """Match profile skills against the job skills."""
 
-        # Normalize job skills once for efficient membership checks.
         job_skills = {self._normalize(skill): skill for skill in job.skills}
 
-        # Preserve the original profile skill names in the result.
         matched = tuple(
             skill for skill in profile.skills if self._normalize(skill) in job_skills
         )
@@ -200,18 +367,16 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
     ) -> MatchDimension:
         """Match profile experience against the job experience level."""
 
-        # Unknown job seniority cannot be evaluated deterministically.
         if job.experience_level == ExperienceLevel.UNKNOWN:
             return MatchDimension(
                 matched=None,
                 evidence=("Job experience level is unknown.",),
             )
 
-        # No experience target is configured in the profile.
         if profile.experience.current_title is None and profile.experience.years == 0:
             return MatchDimension(
                 matched=None,
-                evidence=("No specific profile experience target is configured.",),
+                evidence=("No specific profile experience target " "is configured.",),
             )
 
         years = profile.experience.years
@@ -270,13 +435,6 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         requirement = job.education_requirement
         education = profile.education
 
-        # --------------------------------------------------------------
-        # No explicit education requirement.
-        # --------------------------------------------------------------
-        #
-        # Preserve the existing matcher contract. Jobs without an
-        # education requirement should not become an automatic match.
-        #
         if requirement.status.value in {
             "unknown",
             "not_required",
@@ -288,13 +446,6 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 ),
             )
 
-        # --------------------------------------------------------------
-        # Profile has no education information.
-        # --------------------------------------------------------------
-        #
-        # The job explicitly requires education, therefore the profile
-        # cannot satisfy that requirement.
-        #
         profile_has_education = any(
             (
                 education.degree,
@@ -319,8 +470,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         evidence: list[str] = []
 
         # --------------------------------------------------------------
-        # Degree requirement.
+        # Degree requirement
         # --------------------------------------------------------------
+
         if requirement.degree:
             if not education.degree:
                 missing_values.append(requirement.degree)
@@ -347,8 +499,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 )
 
         # --------------------------------------------------------------
-        # Academic field requirement.
+        # Academic field requirement
         # --------------------------------------------------------------
+
         if requirement.field:
             if not education.field:
                 missing_values.append(requirement.field)
@@ -375,16 +528,21 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 )
 
         # --------------------------------------------------------------
-        # Current student requirement.
+        # Current student requirement
         # --------------------------------------------------------------
+
         if requirement.accepts_current_students is True:
             if education.is_running:
-                matched_values.append("currently enrolled student")
+                matched_values.append(
+                    "currently enrolled student",
+                )
                 evidence.append(
                     "Job accepts currently enrolled students.",
                 )
             else:
-                missing_values.append("currently enrolled student")
+                missing_values.append(
+                    "currently enrolled student",
+                )
                 evidence.append(
                     "Job accepts currently enrolled students, "
                     "but the profile education is not marked as running.",
@@ -404,8 +562,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 )
 
         # --------------------------------------------------------------
-        # Graduation year requirement.
+        # Graduation year requirement
         # --------------------------------------------------------------
+
         has_graduation_requirement = (
             requirement.minimum_graduation_year is not None
             or requirement.maximum_graduation_year is not None
@@ -433,7 +592,11 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                 )
 
                 if too_early:
-                    missing_values.append(str(requirement.minimum_graduation_year))
+                    missing_values.append(
+                        str(
+                            requirement.minimum_graduation_year,
+                        )
+                    )
                     evidence.append(
                         f"Profile graduation year {graduation_year} "
                         f"is earlier than the minimum required year "
@@ -441,7 +604,11 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                     )
 
                 elif too_late:
-                    missing_values.append(str(requirement.maximum_graduation_year))
+                    missing_values.append(
+                        str(
+                            requirement.maximum_graduation_year,
+                        )
+                    )
                     evidence.append(
                         f"Profile graduation year {graduation_year} "
                         f"is later than the maximum allowed year "
@@ -449,7 +616,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
                     )
 
                 else:
-                    matched_values.append(str(graduation_year))
+                    matched_values.append(
+                        str(graduation_year),
+                    )
                     evidence.append(
                         f"Profile graduation year {graduation_year} "
                         "satisfies the job requirement.",
@@ -625,11 +794,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         profile = self._normalize(profile_degree)
         required = self._normalize(required_degree)
 
-        # Exact normalized match.
         if profile == required:
             return True
 
-        # Check known degree families.
         return any(
             profile in aliases and required in aliases
             for aliases in self._DEGREE_ALIASES.values()
@@ -645,11 +812,9 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         profile = self._normalize(profile_field)
         required = self._normalize(required_field)
 
-        # Exact normalized match.
         if profile == required:
             return True
 
-        # Check known conservative field aliases.
         return any(
             profile in aliases and required in aliases
             for aliases in self._FIELD_ALIASES.values()

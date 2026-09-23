@@ -6,11 +6,32 @@ from app.domain.job import (
     RemoteType,
 )
 from app.normalization.lever import LeverJobNormalizer
+from app.normalization.skills import SkillExtractor
 
 
 @pytest.fixture
-def normalizer():
-    return LeverJobNormalizer("gohighlevel")
+def skill_extractor():
+    return SkillExtractor(
+        {
+            "Java": ["java"],
+            "Spring Boot": ["spring boot"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "REST APIs": [
+                "rest api",
+                "rest apis",
+                "restful api",
+                "restful apis",
+            ],
+        }
+    )
+
+
+@pytest.fixture
+def normalizer(skill_extractor):
+    return LeverJobNormalizer(
+        "gohighlevel",
+        skill_extractor=skill_extractor,
+    )
 
 
 @pytest.fixture
@@ -18,7 +39,10 @@ def raw_lever_job():
     return {
         "id": "lever-123",
         "text": "Backend Developer",
-        "descriptionPlain": "Build backend services.",
+        "descriptionPlain": (
+            "Build backend services using Java, Spring Boot, "
+            "PostgreSQL and REST APIs."
+        ),
         "categories": {
             "location": "India",
             "commitment": "Full-time",
@@ -39,13 +63,23 @@ def test_normalizer_converts_lever_job(normalizer, raw_lever_job):
     assert job.source_job_id == "lever-123"
     assert job.company == "gohighlevel"
     assert job.title == "Backend Developer"
-    assert job.description == "Build backend services."
+
+    assert job.description == (
+        "Build backend services using Java, Spring Boot, " "PostgreSQL and REST APIs."
+    )
+
     assert job.location == "India"
 
     assert job.remote_type == RemoteType.INDIA_REMOTE
     assert job.employment_type == EmploymentType.FULL_TIME
     assert job.experience_level == ExperienceLevel.UNKNOWN
-    assert job.skills == []
+
+    assert job.skills == [
+        "Java",
+        "Spring Boot",
+        "PostgreSQL",
+        "REST APIs",
+    ]
 
     assert str(job.application_url) == (
         "https://jobs.lever.co/gohighlevel/lever-123/apply"

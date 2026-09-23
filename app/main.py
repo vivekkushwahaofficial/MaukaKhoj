@@ -30,6 +30,7 @@ def main() -> None:
     sources_config = config["sources"]
     freshness_config = config["freshness"]
     output_config = config["output"]
+    skill_aliases = config["skills"]["aliases"]
 
     application = MaukaKhojApplication(
         sources_config=sources_config,
@@ -37,6 +38,7 @@ def main() -> None:
             sources_config["request_timeout_seconds"],
         ),
         freshness_config=freshness_config,
+        skill_aliases=skill_aliases,
     )
 
     try:

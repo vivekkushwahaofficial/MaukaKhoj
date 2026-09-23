@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.normalization.skills import SkillExtractor
 from app.deduplication.job import CanonicalJobDeduplicator
 from app.domain.profile import Profile
 from app.explanation.job import DeterministicJobExplainer
@@ -30,9 +31,13 @@ class MaukaKhojApplication:
         sources_config: dict[str, Any],
         request_timeout_seconds: float = 20.0,
         freshness_config: dict[str, Any] | None = None,
+        skill_aliases: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the application from source and pipeline configuration."""
         self._http_client = HttpClient(request_timeout_seconds)
+
+        skill_aliases = skill_aliases or {}
+        self._skill_extractor = SkillExtractor(skill_aliases)
 
         source_registry = SourceRegistry()
         self._register_sources(source_registry)
@@ -115,7 +120,10 @@ class MaukaKhojApplication:
                 account_name=slug,
                 http_client=self._http_client,
             ),
-            LeverJobNormalizer(slug),
+            LeverJobNormalizer(
+                slug,
+                skill_extractor=self._skill_extractor,
+            ),
         )
 
     def _build_ashby_source(
@@ -140,7 +148,10 @@ class MaukaKhojApplication:
                 job_board_name=slug,
                 http_client=self._http_client,
             ),
-            AshbyJobNormalizer(name),
+            AshbyJobNormalizer(
+                name,
+                skill_extractor=self._skill_extractor,
+            ),
         )
 
     def run(

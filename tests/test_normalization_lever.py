@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from app.domain.education import EducationRequirementStatus
@@ -7,6 +8,32 @@ from app.domain.job import (
     RemoteType,
 )
 from app.normalization.lever import LeverJobNormalizer
+from app.normalization.skills import SkillExtractor
+
+
+@pytest.fixture
+def skill_extractor():
+    return SkillExtractor(
+        {
+            "Java": ["java"],
+            "Spring Boot": ["spring boot"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "REST APIs": [
+                "rest api",
+                "rest apis",
+                "restful api",
+                "restful apis",
+            ],
+        }
+    )
+
+
+@pytest.fixture
+def normalizer(skill_extractor):
+    return LeverJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
 
 def create_raw_job(**overrides):
@@ -31,10 +58,8 @@ def create_raw_job(**overrides):
     return data
 
 
-def test_normalize_basic_lever_job():
+def test_normalize_basic_lever_job(normalizer):
     """Verify the existing Lever-to-canonical mapping remains intact."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(create_raw_job())
 
@@ -49,13 +74,16 @@ def test_normalize_basic_lever_job():
     assert job.employment_type == EmploymentType.FULL_TIME
     assert job.experience_level == ExperienceLevel.UNKNOWN
 
+    assert job.skills == [
+        "Java",
+        "Spring Boot",
+    ]
+
     assert str(job.application_url) == "https://jobs.example.com/backend-1"
 
 
-def test_normalize_extracts_bachelors_degree():
+def test_normalize_extracts_bachelors_degree(normalizer):
     """Verify Bachelor's degree requirements are extracted."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
@@ -73,10 +101,8 @@ def test_normalize_extracts_bachelors_degree():
     assert requirement.field == "Computer Science"
 
 
-def test_normalize_extracts_btech_and_current_student_status():
+def test_normalize_extracts_btech_and_current_student_status(normalizer):
     """Verify running students and B.Tech requirements are extracted."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
@@ -95,10 +121,8 @@ def test_normalize_extracts_btech_and_current_student_status():
     assert requirement.accepts_current_students is True
 
 
-def test_normalize_extracts_graduation_year():
+def test_normalize_extracts_graduation_year(normalizer):
     """Verify a single graduation year is normalized."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(descriptionPlain=("Candidates graduating in 2027 are eligible."))
@@ -111,14 +135,12 @@ def test_normalize_extracts_graduation_year():
     assert requirement.maximum_graduation_year == 2027
 
 
-def test_normalize_extracts_graduation_range():
+def test_normalize_extracts_graduation_range(normalizer):
     """Verify a graduation-year range is normalized."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
-            descriptionPlain=("Students graduating between 2026 and 2027 " "may apply.")
+            descriptionPlain=("Students graduating between 2026 and 2027 may apply.")
         )
     )
 
@@ -129,10 +151,8 @@ def test_normalize_extracts_graduation_range():
     assert requirement.maximum_graduation_year == 2027
 
 
-def test_normalize_no_education_requirement_remains_unknown():
+def test_normalize_no_education_requirement_remains_unknown(normalizer):
     """Jobs without education information must remain neutral."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
@@ -150,10 +170,8 @@ def test_normalize_no_education_requirement_remains_unknown():
     assert requirement.accepts_current_students is None
 
 
-def test_normalize_explicit_no_degree_requirement():
+def test_normalize_explicit_no_degree_requirement(normalizer):
     """Verify explicit absence of a degree requirement is preserved."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
@@ -169,10 +187,8 @@ def test_normalize_explicit_no_degree_requirement():
     assert requirement.status == EducationRequirementStatus.NOT_REQUIRED
 
 
-def test_normalize_falls_back_to_html_description():
+def test_normalize_falls_back_to_html_description(normalizer):
     """Verify the existing description fallback still works."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(
         create_raw_job(
@@ -188,10 +204,8 @@ def test_normalize_falls_back_to_html_description():
     assert requirement.field == "Computer Science"
 
 
-def test_normalize_preserves_timestamps():
+def test_normalize_preserves_timestamps(normalizer):
     """Verify Lever millisecond timestamps are converted to UTC."""
-
-    normalizer = LeverJobNormalizer("Example")
 
     job = normalizer.normalize(create_raw_job())
 

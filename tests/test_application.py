@@ -29,6 +29,21 @@ def make_profile() -> Profile:
     )
 
 
+def make_skill_aliases() -> dict[str, list[str]]:
+    """Create a generic skill vocabulary for application tests."""
+    return {
+        "Java": ["java"],
+        "Spring Boot": ["spring boot"],
+        "PostgreSQL": ["postgresql", "postgres"],
+        "REST APIs": [
+            "rest api",
+            "rest apis",
+            "restful api",
+            "restful apis",
+        ],
+    }
+
+
 def make_job(
     *,
     job_id: str,
@@ -85,6 +100,7 @@ def test_application_creates_lever_pipeline() -> None:
             sources_config={
                 "lever": make_lever_config(),
             },
+            skill_aliases=make_skill_aliases(),
         )
 
         try:
@@ -123,6 +139,7 @@ def test_application_accepts_freshness_configuration() -> None:
                 "enabled": True,
                 "max_age_days": 30,
             },
+            skill_aliases=make_skill_aliases(),
         )
 
         try:
@@ -147,6 +164,7 @@ def test_application_registers_lever_source() -> None:
         sources_config={
             "lever": make_lever_config(),
         },
+        skill_aliases=make_skill_aliases(),
     )
 
     try:
@@ -176,6 +194,7 @@ def test_application_supports_multiple_lever_companies() -> None:
                     ],
                 },
             },
+            skill_aliases=make_skill_aliases(),
         )
 
         try:
@@ -207,6 +226,7 @@ def test_application_keeps_lever_normalizers_isolated_by_company() -> None:
                     ],
                 },
             },
+            skill_aliases=make_skill_aliases(),
         )
 
         try:

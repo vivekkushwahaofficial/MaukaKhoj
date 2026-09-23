@@ -29,6 +29,83 @@ sources:
       - slug: savvymoney
         name: SavvyMoney
 
+skills:
+  aliases:
+    Java:
+      - java
+    Spring Boot:
+      - spring boot
+    Spring Security:
+      - spring security
+    Spring Data JPA:
+      - spring data jpa
+    Hibernate:
+      - hibernate
+    REST APIs:
+      - rest api
+      - rest apis
+      - restful api
+      - restful apis
+    PostgreSQL:
+      - postgresql
+      - postgres
+    MySQL:
+      - mysql
+    MongoDB:
+      - mongodb
+      - mongo db
+    React:
+      - react
+      - react.js
+      - reactjs
+    JavaScript:
+      - javascript
+    TypeScript:
+      - typescript
+    HTML/CSS:
+      - html/css
+      - html
+      - css
+    WebSockets:
+      - websocket
+      - websockets
+    JWT Authentication:
+      - jwt
+      - json web token
+      - json web tokens
+    Docker:
+      - docker
+    Maven:
+      - maven
+    Git:
+      - git
+    GitHub:
+      - github
+    GitHub API:
+      - github api
+    OAuth:
+      - oauth
+      - oauth2
+      - oauth 2.0
+    Postman:
+      - postman
+    OOP:
+      - oop
+      - object oriented programming
+      - object-oriented programming
+    DBMS:
+      - dbms
+      - database management system
+    Python:
+      - python
+    Node.js:
+      - node.js
+      - nodejs
+      - node js
+    Express.js:
+      - express.js
+      - expressjs
+
 matching:
   role_weight: 25
   skills_weight: 30

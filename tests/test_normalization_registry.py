@@ -6,6 +6,7 @@ from app.domain.job import Job
 from app.normalization.base import JobNormalizer
 from app.normalization.ashby import AshbyJobNormalizer
 from app.normalization.registry import NormalizationRegistry
+from app.normalization.skills import SkillExtractor
 
 
 class FakeNormalizer(JobNormalizer):
@@ -13,6 +14,22 @@ class FakeNormalizer(JobNormalizer):
 
     def normalize(self, raw_job: dict[str, Any]) -> Job:
         raise NotImplementedError
+
+
+def create_skill_extractor() -> SkillExtractor:
+    return SkillExtractor(
+        {
+            "Java": ["java"],
+            "Spring Boot": ["spring boot"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "REST APIs": [
+                "rest api",
+                "rest apis",
+                "restful api",
+                "restful apis",
+            ],
+        }
+    )
 
 
 def test_register_and_get_normalizer() -> None:
@@ -66,7 +83,10 @@ def test_unknown_source_is_rejected() -> None:
 
 def test_register_and_get_ashby_normalizer() -> None:
     registry = NormalizationRegistry()
-    normalizer = AshbyJobNormalizer("Example")
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=create_skill_extractor(),
+    )
 
     registry.register("ashby", normalizer)
 
@@ -75,7 +95,10 @@ def test_register_and_get_ashby_normalizer() -> None:
 
 def test_ashby_source_lookup_is_case_insensitive() -> None:
     registry = NormalizationRegistry()
-    normalizer = AshbyJobNormalizer("Example")
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=create_skill_extractor(),
+    )
 
     registry.register("Ashby", normalizer)
 

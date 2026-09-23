@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.domain.job import EmploymentType, RemoteType
+from app.domain.job import EmploymentType, ExperienceLevel, RemoteType
 from app.normalization.ashby import AshbyJobNormalizer
+from app.normalization.skills import SkillExtractor
 
 
 def make_job(**overrides: object) -> dict:
@@ -12,11 +13,16 @@ def make_job(**overrides: object) -> dict:
         "location": "Bangalore, India",
         "isRemote": True,
         "workplaceType": "Remote",
-        "descriptionPlain": "Build backend systems.",
+        "descriptionPlain": (
+            "Build backend systems using Java, Spring Boot, "
+            "PostgreSQL, and REST APIs."
+        ),
         "publishedAt": "2026-09-10T10:30:00.000+00:00",
         "employmentType": "FullTime",
         "jobUrl": "https://jobs.ashbyhq.com/example/software-engineer",
-        "applyUrl": "https://jobs.ashbyhq.com/example/software-engineer/apply",
+        "applyUrl": (
+            "https://jobs.ashbyhq.com/example/software-engineer/apply"
+        ),
         "address": {
             "postalAddress": {
                 "addressLocality": "Bangalore",
@@ -25,27 +31,62 @@ def make_job(**overrides: object) -> dict:
             }
         },
     }
-
     job.update(overrides)
     return job
 
 
-def test_normalizes_basic_ashby_job() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+@pytest.fixture
+def skill_extractor() -> SkillExtractor:
+    return SkillExtractor(
+        {
+            "Java": ["java"],
+            "Spring Boot": ["spring boot"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "REST APIs": [
+                "rest api",
+                "rest apis",
+                "restful api",
+                "restful apis",
+            ],
+        }
+    )
+
+
+def test_normalize_basic_job(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
     job = normalizer.normalize(make_job())
 
-    assert job.job_id == ("ashby:Example:example/software-engineer")
+    assert job.job_id == "ashby:Example:example/software-engineer"
     assert job.source == "ashby"
     assert job.source_job_id == "example/software-engineer"
     assert job.company == "Example"
     assert job.title == "Software Engineer"
-    assert job.description == "Build backend systems."
+
+    assert job.description == (
+        "Build backend systems using Java, Spring Boot, "
+        "PostgreSQL, and REST APIs."
+    )
+
     assert job.location == "Bangalore, India"
     assert job.remote_type == RemoteType.INDIA_REMOTE
     assert job.employment_type == EmploymentType.FULL_TIME
-    assert str(job.application_url).endswith("/apply")
-    assert str(job.source_url).endswith("/software-engineer")
+    assert job.experience_level == ExperienceLevel.UNKNOWN
+
+    assert job.skills == [
+        "Java",
+        "Spring Boot",
+        "PostgreSQL",
+        "REST APIs",
+    ]
+
+    assert job.salary is None
+
     assert job.posted_at == datetime(
         2026,
         9,
@@ -55,42 +96,67 @@ def test_normalizes_basic_ashby_job() -> None:
         tzinfo=timezone.utc,
     )
 
+    assert job.updated_at is None
 
-def test_maps_hybrid() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+    assert str(job.application_url) == (
+        "https://jobs.ashbyhq.com/example/software-engineer/apply"
+    )
+
+    assert str(job.source_url) == (
+        "https://jobs.ashbyhq.com/example/software-engineer"
+    )
+
+
+def test_normalize_hybrid_job(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
     job = normalizer.normalize(
         make_job(
-            isRemote=False,
             workplaceType="Hybrid",
+            isRemote=False,
         )
     )
 
     assert job.remote_type == RemoteType.HYBRID
 
 
-def test_maps_onsite() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+def test_normalize_onsite_job(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
     job = normalizer.normalize(
         make_job(
+            workplaceType="Onsite",
             isRemote=False,
-            workplaceType="OnSite",
         )
     )
 
     assert job.remote_type == RemoteType.ONSITE
 
 
-def test_remote_outside_india_is_unknown_for_now() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+def test_remote_job_outside_india_is_unknown(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
     job = normalizer.normalize(
         make_job(
-            location="New York, USA",
+            location="Toronto, Canada",
             address={
                 "postalAddress": {
-                    "addressCountry": "USA",
+                    "addressCountry": "Canada",
                 }
             },
         )
@@ -99,49 +165,83 @@ def test_remote_outside_india_is_unknown_for_now() -> None:
     assert job.remote_type == RemoteType.UNKNOWN
 
 
-def test_maps_employment_types() -> None:
-    normalizer = AshbyJobNormalizer("Example")
-
-    assert (
-        normalizer.normalize(make_job(employmentType="Intern")).employment_type
-        == EmploymentType.INTERNSHIP
+@pytest.mark.parametrize(
+    ("employment_type", "expected"),
+    [
+        ("FullTime", EmploymentType.FULL_TIME),
+        ("fulltime", EmploymentType.FULL_TIME),
+        ("PartTime", EmploymentType.PART_TIME),
+        ("parttime", EmploymentType.PART_TIME),
+        ("Intern", EmploymentType.INTERNSHIP),
+        ("Contract", EmploymentType.CONTRACT),
+        ("Temporary", EmploymentType.TEMPORARY),
+    ],
+)
+def test_employment_type_mapping(
+    employment_type: str,
+    expected: EmploymentType,
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
     )
 
-    assert (
-        normalizer.normalize(make_job(employmentType="Contract")).employment_type
-        == EmploymentType.CONTRACT
+    job = normalizer.normalize(
+        make_job(employmentType=employment_type)
     )
 
-    assert (
-        normalizer.normalize(make_job(employmentType="PartTime")).employment_type
-        == EmploymentType.PART_TIME
+    assert job.employment_type == expected
+
+
+def test_description_html_fallback(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
     )
-
-
-def test_description_html_is_fallback() -> None:
-    normalizer = AshbyJobNormalizer("Example")
 
     job = normalizer.normalize(
         make_job(
             descriptionPlain="",
-            descriptionHtml="<p>Build great software.</p>",
+            descriptionHtml="<p>Build backend systems using Java.</p>",
         )
     )
 
-    assert job.description == "<p>Build great software.</p>"
+    assert job.description == (
+        "<p>Build backend systems using Java.</p>"
+    )
+    assert job.skills == ["Java"]
 
 
-def test_missing_title_is_rejected() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+def test_missing_title_raises_error(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
-    with pytest.raises(ValueError, match="title"):
+    with pytest.raises(
+        ValueError,
+        match="Ashby field 'title' is required",
+    ):
         normalizer.normalize(make_job(title=""))
 
 
-def test_missing_description_is_rejected() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+def test_missing_description_raises_error(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
-    with pytest.raises(ValueError, match="description"):
+    with pytest.raises(
+        ValueError,
+        match="descriptionPlain or descriptionHtml",
+    ):
         normalizer.normalize(
             make_job(
                 descriptionPlain="",
@@ -150,8 +250,18 @@ def test_missing_description_is_rejected() -> None:
         )
 
 
-def test_missing_apply_url_is_rejected() -> None:
-    normalizer = AshbyJobNormalizer("Example")
+def test_missing_apply_url_raises_error(
+    skill_extractor: SkillExtractor,
+) -> None:
+    normalizer = AshbyJobNormalizer(
+        "Example",
+        skill_extractor=skill_extractor,
+    )
 
-    with pytest.raises(ValueError, match="applyUrl"):
-        normalizer.normalize(make_job(applyUrl=""))
+    with pytest.raises(
+        ValueError,
+        match="Ashby field 'applyUrl' is required",
+    ):
+        normalizer.normalize(
+            make_job(applyUrl="")
+        )

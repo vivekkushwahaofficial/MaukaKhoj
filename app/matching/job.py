@@ -85,6 +85,32 @@ class CanonicalJobProfileMatcher(JobProfileMatcher):
         ),
     }
 
+    @classmethod
+    def role_family_for_target(cls, target_title: str) -> str | None:
+        """Return the canonical role family for a supported target title."""
+
+        normalized_target = cls._normalize(target_title)
+
+        family_map = {
+            "software engineer": "software_engineering",
+            "software developer": "software_engineering",
+            "software engineering intern": "software_engineering",
+            "software developer intern": "software_engineering",
+            "software engineer intern": "software_engineering",
+            "backend engineer": "backend_engineering",
+            "backend developer": "backend_engineering",
+            "backend engineer intern": "backend_engineering",
+            "backend developer intern": "backend_engineering",
+            "java developer": "java_engineering",
+            "java developer intern": "java_engineering",
+            "java software engineer": "java_engineering",
+            "full stack developer": "full_stack_engineering",
+            "junior full stack developer": "full_stack_engineering",
+            "full stack developer intern": "full_stack_engineering",
+        }
+
+        return family_map.get(normalized_target)
+
     def match(
         self,
         job: Job,

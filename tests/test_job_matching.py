@@ -395,3 +395,25 @@ def test_no_preferences_produce_unknown_dimensions(matcher):
     assert result.remote.matched is None
     assert result.employment.matched is None
     assert result.domain.matched is None
+
+
+@pytest.mark.parametrize(
+    ("target_title", "expected_family"),
+    [
+        ("Software Engineer", "software_engineering"),
+        ("Software Developer", "software_engineering"),
+        ("Backend Engineer", "backend_engineering"),
+        ("Backend Developer", "backend_engineering"),
+        ("Java Developer", "java_engineering"),
+        ("Full Stack Developer", "full_stack_engineering"),
+        ("Unknown Role", None),
+    ],
+)
+def test_role_family_for_target(
+    target_title: str,
+    expected_family: str | None,
+) -> None:
+    assert (
+        CanonicalJobProfileMatcher.role_family_for_target(target_title)
+        == expected_family
+    )

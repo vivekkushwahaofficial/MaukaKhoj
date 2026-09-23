@@ -9,18 +9,22 @@ from app.domain.job import (
 )
 from app.normalization.base import JobNormalizer
 from app.normalization.education import EducationRequirementExtractor
-
+from app.normalization.skills import SkillExtractor
 
 class LeverJobNormalizer(JobNormalizer):
     """Normalize a raw Lever posting into a canonical Job."""
 
-    def __init__(self, account_name: str) -> None:
-        # Lever account name is required because it becomes part of the
-        # canonical job identifier and company name.
+    def __init__(
+        self,
+        account_name: str,
+        *,
+        skill_extractor: SkillExtractor,
+    ) -> None:
         if not account_name.strip():
             raise ValueError("Lever account name cannot be empty.")
 
         self._account_name = account_name.strip()
+        self._skill_extractor = skill_extractor
 
     def normalize(self, raw_job: dict[str, Any]) -> Job:
         """Convert one raw Lever posting into a canonical Job."""
@@ -46,6 +50,7 @@ class LeverJobNormalizer(JobNormalizer):
         # Extract structured education requirements from the final
         # normalized plain-text description.
         education_requirement = EducationRequirementExtractor.extract(description)
+        skills = self._skill_extractor.extract(description)
 
         return Job(
             job_id=f"lever:{self._account_name}:{source_job_id}",
@@ -61,7 +66,7 @@ class LeverJobNormalizer(JobNormalizer):
             ),
             employment_type=self._map_employment_type(commitment),
             experience_level=ExperienceLevel.UNKNOWN,
-            skills=[],
+            skills=skills,
             salary=None,
             posted_at=self._parse_timestamp(raw_job.get("createdAt")),
             updated_at=self._parse_timestamp(raw_job.get("updatedAt")),

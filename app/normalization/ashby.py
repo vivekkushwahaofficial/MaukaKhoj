@@ -10,18 +10,25 @@ from app.domain.job import (
 )
 from app.normalization.base import JobNormalizer
 from app.normalization.education import EducationRequirementExtractor
+from app.normalization.skills import SkillExtractor
 
 
 class AshbyJobNormalizer(JobNormalizer):
     """Normalize a raw Ashby posting into a canonical Job."""
 
-    def __init__(self, job_board_name: str) -> None:
+    def __init__(
+        self,
+        job_board_name: str,
+        *,
+        skill_extractor: SkillExtractor,
+    ) -> None:
         # Ashby board name is required because it is part of the
         # canonical job identity and company name.
         if not job_board_name.strip():
             raise ValueError("Ashby job board name cannot be empty.")
 
         self._job_board_name = job_board_name.strip()
+        self._skill_extractor = skill_extractor
 
     def normalize(self, raw_job: dict[str, Any]) -> Job:
         """Convert one raw Ashby posting into a canonical Job."""
@@ -46,9 +53,10 @@ class AshbyJobNormalizer(JobNormalizer):
 
         workplace_type = self._optional_string(raw_job.get("workplaceType"))
 
-        # Extract structured education requirements from the same
-        # normalized description used by the canonical Job.
+        # Extract structured requirements from the same normalized
+        # description used by the canonical Job.
         education_requirement = EducationRequirementExtractor.extract(description)
+        skills = self._skill_extractor.extract(description)
 
         return Job(
             job_id=f"ashby:{self._job_board_name}:{source_job_id}",
@@ -65,7 +73,7 @@ class AshbyJobNormalizer(JobNormalizer):
             ),
             employment_type=self._map_employment_type(raw_job.get("employmentType")),
             experience_level=ExperienceLevel.UNKNOWN,
-            skills=[],
+            skills=skills,
             salary=self._get_salary(raw_job),
             posted_at=self._parse_timestamp(raw_job.get("publishedAt")),
             updated_at=None,

@@ -12,6 +12,7 @@ from app.normalization.ashby import AshbyJobNormalizer
 from app.normalization.base import JobNormalizer
 from app.normalization.pipeline import NormalizationPipeline
 from app.normalization.registry import NormalizationRegistry
+from app.normalization.skills import SkillExtractor
 
 
 class FakeNormalizer(JobNormalizer):
@@ -80,10 +81,27 @@ def test_pipeline_rejects_unknown_source() -> None:
 
 
 def test_pipeline_normalizes_ashby_jobs() -> None:
+    skill_extractor = SkillExtractor(
+        {
+            "Java": ["java"],
+            "Spring Boot": ["spring boot"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "REST APIs": [
+                "rest api",
+                "rest apis",
+                "restful api",
+                "restful apis",
+            ],
+        }
+    )
+
     registry = NormalizationRegistry()
     registry.register(
         "ashby",
-        AshbyJobNormalizer("Example"),
+        AshbyJobNormalizer(
+            "Example",
+            skill_extractor=skill_extractor,
+        ),
     )
 
     pipeline = NormalizationPipeline(registry)
@@ -97,8 +115,14 @@ def test_pipeline_normalizes_ashby_jobs() -> None:
             "descriptionPlain": "Build backend systems.",
             "publishedAt": "2026-09-10T10:30:00.000+00:00",
             "employmentType": "FullTime",
-            "jobUrl": ("https://jobs.ashbyhq.com/" "example/backend-engineer"),
-            "applyUrl": ("https://jobs.ashbyhq.com/" "example/backend-engineer/apply"),
+            "jobUrl": (
+                "https://jobs.ashbyhq.com/"
+                "example/backend-engineer"
+            ),
+            "applyUrl": (
+                "https://jobs.ashbyhq.com/"
+                "example/backend-engineer/apply"
+            ),
             "address": {
                 "postalAddress": {
                     "addressCountry": "India",
